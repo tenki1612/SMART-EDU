@@ -1,0 +1,16 @@
+// Hệ thống Constants cho các vai trò và trạng thái
+export const ROLES = {
+  ADMIN: 'ADMIN',
+  ACADEMIC_STAFF: 'ACADEMIC_STAFF',
+  TEACHER: 'TEACHER',
+  STUDENT: 'STUDENT',
+  PARENT: 'PARENT',
+};
+
+export const CLASS_STATUS = {
+  PLANNED: 'PLANNED',
+  OPEN_FOR_ENROLLMENT: 'OPEN_FOR_ENROLLMENT',
+  IN_PROGRESS: 'IN_PROGRESS',
+  COMPLETED: 'COMPLETED',
+  CANCELLED: 'CANCELLED',
+};
