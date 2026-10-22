@@ -64,7 +64,7 @@ const MainApp = () => {
     };
 
     return (
-        <div className="min-h-screen flex flex-col bg-slate-50 text-slate-800">
+        <div className="min-h-screen flex flex-col bg-slate-100/80 text-slate-900 selection:bg-indigo-600 selection:text-white">
             <Navbar onToggleMobileMenu={() => setMobileMenuOpen(!mobileMenuOpen)} />
             <div className="flex-1 flex">
                 <Sidebar
