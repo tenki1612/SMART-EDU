@@ -7,7 +7,7 @@ from app.modules.courses.models import Course
 from app.modules.classes.models import Class, ClassStudent
 from app.modules.grades.models import GradeRecord
 from app.modules.enrollments.models import EnrollmentRequest
-from app.core.exceptions import BusinessException, NotFoundException
+from app.core.exceptions import BusinessException, NotFoundException, ForbiddenException
 from app.modules.progression_parent.schemas import (
     ProgressionCheckRequest, ParentWardInfoResponse
 )
@@ -125,10 +125,10 @@ class ProgressionParentService:
             s = l.student
             user = s.user
             # Đếm số khóa đã tham gia
-            enrollment_count = db.query(ClassStudent).filter(ClassStudent.student_id == s.id).count()
+            enrollment_count = db.query(ClassStudent).filter(ClassStudent.student_id == s.id, ClassStudent.is_deleted == False).count()
             
             # Tính điểm trung bình
-            grades = db.query(GradeRecord).filter(GradeRecord.student_id == s.id, GradeRecord.is_confirmed == True).all()
+            grades = db.query(GradeRecord).filter(GradeRecord.student_id == s.id, GradeRecord.is_confirmed == True, GradeRecord.is_deleted == False).all()
             avg_score = round(sum(g.total_score for g in grades) / len(grades), 2) if grades else None
 
             results.append(ParentWardInfoResponse(
@@ -152,8 +152,20 @@ class ProgressionParentService:
             ParentStudent.student_id == student_id
         ).first()
         if not link:
-            raise BusinessException("Bạn không có quyền giám hộ đối với học viên này.")
+            raise ForbiddenException("Bạn không có quyền giám hộ đối với học viên này.")
         
         from app.modules.enrollments.service import EnrollmentService
         return EnrollmentService.list_requests(db, student_id=student_id)
 
+    @staticmethod
+    def get_ward_grades(db: Session, parent_user_id: int, student_id: int) -> List[dict]:
+        """Phụ huynh xem bảng điểm chi tiết của con mình (học viên được giám hộ)"""
+        link = db.query(ParentStudent).filter(
+            ParentStudent.parent_user_id == parent_user_id,
+            ParentStudent.student_id == student_id
+        ).first()
+        if not link:
+            raise ForbiddenException("Bạn chỉ có quyền xem bảng điểm của con mình được giám hộ.")
+        
+        from app.modules.grades.service import GradeService
+        return GradeService.get_student_grades(db, student_id)

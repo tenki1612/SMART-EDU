@@ -5,6 +5,7 @@ from app.core.database import get_db
 from app.core.permissions import require_roles, RoleEnum, get_current_user_payload
 from app.common.response import ApiResponse
 from app.modules.students.models import Student
+from app.modules.grades.schemas import GradeRecordResponse
 from app.modules.progression_parent.schemas import (
     ProgressionCheckRequest, ProgressionResponse, ParentWardInfoResponse
 )
@@ -68,3 +69,13 @@ def get_ward_enrollment_status(
     status_list = ProgressionParentService.get_ward_enrollment_status(db, parent_user_id, student_id)
     return ApiResponse(data=status_list, message="Trạng thái đăng ký khóa học của con")
 
+@router.get("/parent/wards/{student_id}/grades", response_model=ApiResponse[List[GradeRecordResponse]], summary="Phụ huynh xem bảng điểm chi tiết của con")
+def get_ward_grades(
+    student_id: int,
+    payload: dict = Depends(get_current_user_payload),
+    db: Session = Depends(get_db),
+    _ = Depends(require_roles([RoleEnum.PARENT]))
+):
+    parent_user_id = int(payload["sub"])
+    grades = ProgressionParentService.get_ward_grades(db, parent_user_id, student_id)
+    return ApiResponse(data=grades, message="Bảng điểm chi tiết của con")

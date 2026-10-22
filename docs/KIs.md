@@ -22,6 +22,9 @@ Tài liệu này lưu trữ các **Knowledge Items (KIs)** — các bài học k
 - **KI-13:** Thiết kế Bảng Thời Khóa Biểu Ma Trận Tuần & Lọc Lịch Sử Đã Học (Weekly Matrix Timetable)
 - **KI-14:** Vòng Đời Đăng Ký Lớp Học & Ràng Buộc Hủy Đơn Theo Trạng Thái (State-Gated Cancellation)
 - **KI-15:** Chuẩn Hóa Phân Quyền Kép (Dual Administrative RBAC) và Hoàn Thiện Thao Tác CRUD
+- **KI-16:** Phân Quyền Sổ Điểm Nghiêm Ngặt (Strict Grade Mutation RBAC & Separation of Concerns)
+- **KI-17:** Cô Lập Dữ Liệu Điểm Số Cá Nhân & Giám Hộ (Data Privacy Isolation for Student & Parent)
+- **KI-18:** Thiết Kế Bảng Điều Khiển Chuyên Biệt Theo Vai Trò (Role-Tailored Dashboards Architecture)
 
 ---
 
@@ -238,3 +241,65 @@ Tài liệu này lưu trữ các **Knowledge Items (KIs)** — các bài học k
      - Cờ kiểm tra quyền hạn nhất quán: `const canManage = ['ADMIN', 'ACADEMIC_STAFF'].includes(user?.role || '');`.
      - Bổ sung đầy đủ Modal: Thêm mới, Sửa chi tiết, Nút Xóa có hộp thoại xác nhận.
      - Loại bỏ triệt để các hàm `alert()` và `window.prompt()` cũ, thay thế bằng `ToastContext` và Modal chuẩn Tailwind CSS hiện đại.
+
+
+---
+
+### [KI-16] Phân Quyền Sổ Điểm Nghiêm Ngặt (Strict Grade Mutation RBAC & Separation of Concerns)
+- **Bối cảnh nghiệp vụ:**
+  - Quy định học viện: Chỉ có Giảng viên trực tiếp phụ trách lớp học mới có quyền nhập và chỉnh sửa điểm số học viên.
+  - Quản trị viên (ADMIN) và Nhân viên học vụ (ACADEMIC_STAFF) chỉ đóng vai trò phê duyệt, lưu trữ/khóa điểm chính thức và xóa điểm học viên khỏi danh sách lớp khi cần xử lý học vụ. Họ tuyệt đối không được tự ý sửa điểm thành phần hay điểm thi của học viên.
+- **Giải pháp Kiến trúc Phòng vệ 2 Tầng (Defense-in-depth):**
+  1. *Backend RBAC (`backend/app/modules/grades/router.py`):*
+     - `POST /api/v1/grades/batch`: Chặn cứng bằng `require_roles([RoleEnum.TEACHER])`. Bất kỳ yêu cầu sửa điểm hàng loạt nào gửi từ Admin hoặc Academic Staff đều bị phản hồi lỗi `403 Forbidden` kèm thông báo: *"Chỉ có Giảng viên phụ trách mới có quyền thay đổi điểm!"*.
+     - `PATCH /api/v1/grades/classes/{class_id}/confirm`: Cấp riêng cho `RoleEnum.ADMIN` và `RoleEnum.ACADEMIC_STAFF` để đóng sổ điểm chính thức.
+     - `DELETE /api/v1/grades/classes/{class_id}/students/{student_id}`: Cho phép `ADMIN`, `ACADEMIC_STAFF` và `TEACHER` rút học viên/xóa điểm khỏi sổ điểm lớp.
+  2. *Frontend View (`frontend/src/views/GradesView.jsx`):*
+     - Với `ADMIN` và `ACADEMIC_STAFF`: Các ô input nhập điểm (`attendance_score`, `midterm_score`, `final_score`) đều bị khóa cứng `disabled`, giao diện hiển thị banner thông báo màu lam nêu rõ quy định quyền hạn.
+     - Ẩn hoàn toàn nút *"Lưu bảng điểm"* đối với nhân viên và quản trị viên, thay vào đó là nút *"Lưu & Khóa điểm chính thức (Chỉ Staff/Admin)"*, *"Mở khóa"*, *"Thêm học viên"* và nút *"Xóa khỏi bảng điểm"*.
+
+---
+
+### [KI-17] Cô Lập Dữ Liệu Điểm Số Cá Nhân & Giám Hộ (Data Privacy Isolation for Student & Parent)
+- **Bối cảnh nghiệp vụ:**
+  - Để tuân thủ quyền riêng tư dữ liệu học tập, học sinh chỉ được phép xem điểm của chính mình; tuyệt đối không thể xem điểm của học sinh khác trong cùng lớp hoặc các lớp khác.
+  - Phụ huynh chỉ được phép theo dõi bảng điểm của những người con (wards) mà mình được phân quyền giám hộ hợp pháp trong bảng `parent_students`.
+- **Kiến trúc Bảo mật:**
+  1. *Học sinh (`STUDENT`):*
+     - Endpoint chuyên biệt: `GET /api/v1/grades/my-grades` sử dụng `current_user.id` để truy vấn `Student` tương ứng, chỉ trả về các bản ghi điểm của chính học viên.
+     - Giao diện `GradesView.jsx`: Tự động nhận diện vai trò học sinh, ẩn bỏ hoàn toàn thanh chọn lớp học (tránh việc tò mò xem điểm lớp khác), hiển thị trực tiếp danh sách kết quả học tập cá nhân kèm KPI môn đạt/chưa đạt và GPA.
+  2. *Phụ huynh (`PARENT`):*
+     - Endpoint mới: `GET /api/v1/progression/parent/wards/{student_id}/grades` bảo vệ bằng `require_roles([RoleEnum.PARENT])`.
+     - Tầng Service kiểm tra nghiêm ngặt quan hệ giám hộ trong bảng `parent_students`:
+       ```python
+       link = db.query(ParentStudent).filter(
+           ParentStudent.parent_user_id == parent_user_id,
+           ParentStudent.student_id == student_id
+       ).first()
+       if not link:
+           raise ForbiddenException("Bạn chỉ có quyền xem bảng điểm của con mình được giám hộ.")
+       ```
+     - Giao diện `GradesView.jsx`: Hiển thị thanh tab lựa chọn từng người con được giám hộ, thẻ tóm tắt học sinh và bảng điểm môn học chi tiết của người con đó.
+
+---
+
+### [KI-18] Thiết Kế Bảng Điều Khiển Chuyên Biệt Theo Vai Trò (Role-Tailored Dashboards Architecture)
+- **Bối cảnh nghiệp vụ:**
+  - Bảng điều khiển (Dashboard) là nơi người dùng tiếp cận đầu tiên sau khi đăng nhập. Một bảng điều khiển chung chung sẽ khiến phụ huynh, học sinh bối rối bởi các thuật ngữ quản trị, trong khi giáo viên và nhân viên học vụ lại thiếu các công cụ điều hành nhanh.
+- **Giải pháp Thiết kế Giao diện (Frontend Architecture):**
+  - Tách `DashboardView.jsx` thành 4 giao diện nghiệp vụ độc lập dựa trên `user?.role`:
+  1. **Quản trị viên & Nhân viên học vụ (`ADMIN` / `ACADEMIC_STAFF`):**
+     - 4 Thẻ KPI vĩ mô: Tổng số học viên, Khóa học đang mở, Số lớp hoạt động, Yêu cầu đăng ký chờ duyệt.
+     - Widget Điều hành: Danh sách đơn đăng ký chờ duyệt nhanh, Tỷ lệ lấp đầy phòng học (Room Capacity Utilization).
+     - Phím tắt tác vụ nhanh: Mở khóa học mới, Tạo lớp học, Xếp thời khóa biểu, Quản lý phòng học.
+  2. **Giảng viên (`TEACHER`):**
+     - Thống kê giảng dạy: Số lớp phụ trách, Tổng học viên đang dạy, Lịch dạy trong tuần, Sổ điểm đang chờ hoàn tất.
+     - Bảng lớp học phụ trách kèm trạng thái sổ điểm (Đã khóa / Cần nhập điểm) và nút chuyển nhanh đến Sổ điểm.
+  3. **Học sinh (`STUDENT`):**
+     - Thông tin cá nhân: Lớp học đang tham gia, Điểm trung bình GPA, Tỷ lệ môn đã hoàn thành.
+     - Lịch học sắp tới trong tuần (kèm phòng học, giảng viên và giờ học).
+     - Bảng điểm tóm tắt các môn gần nhất và nút điều hướng đến Lịch học, Sổ điểm cá nhân, Đăng ký lớp.
+  4. **Phụ huynh (`PARENT`):**
+     - Thẻ hồ sơ con em được giám hộ: Mã học viên, Tên, Ngày sinh, Khóa học đang học, Trạng thái.
+     - Danh sách các môn con đang học kèm điểm số và kết quả (Đạt/Chưa đạt).
+     - Nút xem chi tiết bảng điểm và đăng ký khóa học tiếp theo cho con.

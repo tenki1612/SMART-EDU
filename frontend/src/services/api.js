@@ -1,10 +1,12 @@
 import axios from 'axios';
+
 export const apiClient = axios.create({
     baseURL: 'http://localhost:8000/api/v1',
     headers: {
         'Content-Type': 'application/json',
     },
 });
+
 // Request Interceptor: Attach JWT Token
 apiClient.interceptors.request.use((config) => {
     const token = localStorage.getItem('token');
@@ -13,6 +15,7 @@ apiClient.interceptors.request.use((config) => {
     }
     return config;
 }, (error) => Promise.reject(error));
+
 // Response Interceptor
 apiClient.interceptors.response.use((response) => response, (error) => {
     const message = error.response?.data?.detail ||
@@ -20,6 +23,7 @@ apiClient.interceptors.response.use((response) => response, (error) => {
         'Đã xảy ra lỗi khi kết nối máy chủ.';
     return Promise.reject(new Error(message));
 });
+
 // 1. Auth API
 export const authApi = {
     login: async (username, password) => {
@@ -35,6 +39,7 @@ export const authApi = {
         return res.data;
     },
 };
+
 // 2. Accounts API
 export const accountsApi = {
     list: async (q, role) => {
@@ -61,6 +66,7 @@ export const accountsApi = {
         return res.data;
     },
 };
+
 // 3. Courses API
 export const coursesApi = {
     list: async (q, only_active = false) => {
@@ -86,6 +92,7 @@ export const coursesApi = {
         return res.data;
     },
 };
+
 // 4. Students API
 export const studentsApi = {
     list: async (q) => {
@@ -97,6 +104,7 @@ export const studentsApi = {
         return res.data;
     },
 };
+
 // 5. Teachers API
 export const teachersApi = {
     list: async (q) => {
@@ -104,6 +112,7 @@ export const teachersApi = {
         return res.data;
     },
 };
+
 // 6. Classes API
 export const classesApi = {
     list: async (q, status) => {
@@ -139,6 +148,7 @@ export const classesApi = {
         return res.data;
     },
 };
+
 // 7. Classrooms API
 export const classroomsApi = {
     list: async (status) => {
@@ -170,6 +180,7 @@ export const classroomsApi = {
         return res.data;
     },
 };
+
 // 8. Enrollments API
 export const enrollmentsApi = {
     listAll: async (status) => {
@@ -204,6 +215,7 @@ export const enrollmentsApi = {
         return res.data;
     },
 };
+
 // 9. Schedules API
 export const schedulesApi = {
     list: async (classId, teacherId) => {
@@ -241,6 +253,7 @@ export const schedulesApi = {
         return res.data;
     },
 };
+
 // 10. Grades API
 export const gradesApi = {
     getGradingSheet: async (classId) => {
@@ -275,6 +288,7 @@ export const gradesApi = {
         return res.data;
     },
 };
+
 // 11. Progression & Parent API
 export const progressionParentApi = {
     checkEligibility: async (student_id, current_course_id, next_course_id) => {
@@ -295,6 +309,10 @@ export const progressionParentApi = {
     },
     getWardEnrollmentStatus: async (studentId) => {
         const res = await apiClient.get(`/progression/parent/wards/${studentId}/enrollment-status`);
+        return res.data;
+    },
+    getWardGrades: async (studentId) => {
+        const res = await apiClient.get(`/progression/parent/wards/${studentId}/grades`);
         return res.data;
     },
 };

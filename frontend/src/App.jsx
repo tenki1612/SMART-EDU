@@ -15,23 +15,29 @@ import { ProgressionParentView } from './views/ProgressionParentView';
 import { StudentsView } from './views/StudentsView';
 import { TeachersView } from './views/TeachersView';
 import { AccountsView } from './views/AccountsView';
+
 const MainApp = () => {
     const { user, token, isLoading } = useAuth();
     const [currentTab, setCurrentTab] = useState('dashboard');
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
     if (isLoading) {
-        return (<div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-white text-xs gap-3 font-semibold">
-        <div className="w-8 h-8 border-3 border-indigo-500 border-t-transparent rounded-full animate-spin"/>
-        Đang khởi tạo phiên làm việc...
-      </div>);
+        return (
+            <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-white text-xs gap-3 font-semibold">
+                <div className="w-8 h-8 border-3 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+                Đang khởi tạo phiên làm việc...
+            </div>
+        );
     }
+
     if (!token || !user) {
         return <LoginView />;
     }
+
     const renderContent = () => {
         switch (currentTab) {
             case 'dashboard':
-                return <DashboardView />;
+                return <DashboardView onTabChange={setCurrentTab} />;
             case 'courses':
                 return <CoursesView />;
             case 'classes':
@@ -53,24 +59,34 @@ const MainApp = () => {
             case 'accounts':
                 return <AccountsView />;
             default:
-                return <DashboardView />;
+                return <DashboardView onTabChange={setCurrentTab} />;
         }
     };
-    return (<div className="min-h-screen flex flex-col bg-slate-50 text-slate-800">
-      <Navbar onToggleMobileMenu={() => setMobileMenuOpen(!mobileMenuOpen)}/>
-      <div className="flex flex-1">
-        <Sidebar currentTab={currentTab} onTabChange={setCurrentTab} mobileOpen={mobileMenuOpen} onCloseMobile={() => setMobileMenuOpen(false)}/>
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full">
-          {renderContent()}
-        </main>
-      </div>
-    </div>);
+
+    return (
+        <div className="min-h-screen flex flex-col bg-slate-50 text-slate-800">
+            <Navbar onToggleMobileMenu={() => setMobileMenuOpen(!mobileMenuOpen)} />
+            <div className="flex-1 flex">
+                <Sidebar
+                    currentTab={currentTab}
+                    onTabChange={setCurrentTab}
+                    mobileOpen={mobileMenuOpen}
+                    onCloseMobile={() => setMobileMenuOpen(false)}
+                />
+                <main className="flex-1 p-5 sm:p-7 max-w-7xl mx-auto w-full overflow-y-auto">
+                    {renderContent()}
+                </main>
+            </div>
+        </div>
+    );
 };
-export function App() {
-    return (<AuthProvider>
-      <ToastProvider>
-        <MainApp />
-      </ToastProvider>
-    </AuthProvider>);
+
+export default function App() {
+    return (
+        <AuthProvider>
+            <ToastProvider>
+                <MainApp />
+            </ToastProvider>
+        </AuthProvider>
+    );
 }
-export default App;

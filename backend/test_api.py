@@ -1,4 +1,5 @@
 import sys
+import time
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
 from datetime import date, timedelta
@@ -97,9 +98,10 @@ def run_tests():
     staff_token = staff_login.json()["data"]["access_token"]
     staff_headers = {"Authorization": f"Bearer {staff_token}"}
 
-    # Staff creates a new test class
+    # Staff creates a new test class with unique code
+    rand_suffix = int(time.time())
     cls_create_res = client.post("/api/v1/classes/", json={
-        "class_code": "TEST-CANCEL-99",
+        "class_code": f"TEST-CAN-{rand_suffix}",
         "course_id": 1,
         "max_capacity": 20
     }, headers=staff_headers)
@@ -160,7 +162,7 @@ def run_tests():
 
     # 10. Academic Staff Classroom CRUD
     room_create = client.post("/api/v1/classrooms/", json={
-        "room_code": "LAB-TEST-99",
+        "room_code": f"LAB-{rand_suffix}",
         "building": "Tòa nhà B",
         "capacity": 35,
         "status": "AVAILABLE"
@@ -177,6 +179,40 @@ def run_tests():
     room_delete = client.delete(f"/api/v1/classrooms/{new_room_id}", headers=staff_headers)
     assert room_delete.status_code == 200
     print("✓ 10. Academic Staff Classroom (Create, Update, Delete): PASSED")
+
+    # 11. Strict RBAC Enforcement for Grades (Teacher-only mutations, Admin/Staff confirm/delete, Student/Parent Isolation)
+    # 11.1 Admin & Staff forbidden from mutating grades directly via /batch
+    admin_grade_attempt = client.post("/api/v1/grades/batch", json={
+        "class_id": 1,
+        "grades": [{"student_id": 1, "attendance_score": 10.0, "midterm_score": 10.0, "final_score": 10.0}]
+    }, headers=headers)
+    assert admin_grade_attempt.status_code == 403, f"Expected 403, got {admin_grade_attempt.status_code}"
+
+    staff_grade_attempt = client.post("/api/v1/grades/batch", json={
+        "class_id": 1,
+        "grades": [{"student_id": 1, "attendance_score": 10.0, "midterm_score": 10.0, "final_score": 10.0}]
+    }, headers=staff_headers)
+    assert staff_grade_attempt.status_code == 403, f"Expected 403, got {staff_grade_attempt.status_code}"
+    print("✓ 11.1. Admin & Staff Forbidden from Direct Grade Mutation: PASSED (403 Forbidden)")
+
+    # 11.2 Admin/Staff can Confirm & Lock Grades
+    staff_confirm_res = client.patch("/api/v1/grades/classes/1/confirm", headers=staff_headers)
+    assert staff_confirm_res.status_code == 200
+    print("✓ 11.2. Academic Staff Confirm & Lock Grade Sheet: PASSED")
+
+    # 11.3 Student can only view their own grades
+    student_grades_res = client.get("/api/v1/grades/my-grades", headers=s_headers)
+    assert student_grades_res.status_code == 200
+    print("✓ 11.3. Student Personal Grade Isolation (/my-grades): PASSED")
+
+    # 11.4 Parent can view ward grades but cannot view non-ward
+    parent_ward_grades = client.get("/api/v1/progression/parent/wards/1/grades", headers=p_headers)
+    assert parent_ward_grades.status_code == 200
+    print("✓ 11.4. Parent Ward Grade Access: PASSED")
+
+    parent_unauth_ward = client.get("/api/v1/progression/parent/wards/999/grades", headers=p_headers)
+    assert parent_unauth_ward.status_code in (403, 404)
+    print("✓ 11.5. Parent Unauthorized Ward Access Blocked: PASSED (403/404)")
 
     print("\n🎉 ALL BACKEND INTEGRATION TESTS PASSED (100% SUCCESS)!")
 
