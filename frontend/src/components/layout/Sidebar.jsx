@@ -13,8 +13,7 @@ import {
   GraduationCap,
   ShieldAlert,
   X,
-  ChevronRight,
-  Sparkles
+  ChevronRight
 } from 'lucide-react';
 
 export const Sidebar = ({
@@ -66,10 +65,10 @@ export const Sidebar = ({
   ];
 
   const sidebarContent = (
-    <div className="flex flex-col h-full bg-slate-950 text-slate-300 w-64 select-none border-r border-slate-800/80 shadow-xl">
+    <div className="flex flex-col h-full bg-slate-950 text-slate-300 w-64 select-none border-r border-slate-800/80 shadow-xl overflow-hidden">
       
       {/* Header bar */}
-      <div className="p-4 border-b border-slate-800/80 flex items-center justify-between">
+      <div className="p-4 border-b border-slate-800/80 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
           <span className="text-[11px] font-black uppercase tracking-wider text-slate-300">
@@ -78,16 +77,18 @@ export const Sidebar = ({
         </div>
         {onCloseMobile && (
           <button
+            type="button"
             onClick={onCloseMobile}
             className="md:hidden text-slate-400 hover:text-white p-1 rounded-lg cursor-pointer"
+            aria-label="Đóng menu"
           >
             <X className="w-4 h-4" />
           </button>
         )}
       </div>
 
-      {/* Nav Menu Items */}
-      <nav className="p-3 space-y-4 flex-1 overflow-y-auto">
+      {/* Nav Menu Items (Independently scrollable) */}
+      <nav className="p-3 space-y-4 flex-1 overflow-y-auto dark-scrollbar min-h-0">
         {menuGroups.map((group, gIdx) => {
           const visibleItems = group.items.filter((item) => item.roles.includes(role));
           if (visibleItems.length === 0) return null;
@@ -105,6 +106,7 @@ export const Sidebar = ({
                 return (
                   <button
                     key={item.id}
+                    type="button"
                     onClick={() => {
                       onTabChange(item.id);
                       if (onCloseMobile) onCloseMobile();
@@ -138,7 +140,7 @@ export const Sidebar = ({
       </nav>
 
       {/* Bottom Profile Footer */}
-      <div className="p-3.5 border-t border-slate-800/80 bg-slate-900/60 text-[11px] text-slate-400">
+      <div className="p-3.5 border-t border-slate-800/80 bg-slate-900/60 text-[11px] text-slate-400 shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="font-bold text-slate-300">FastAPI &bull; React 19</span>
@@ -155,7 +157,7 @@ export const Sidebar = ({
   return (
     <>
       {/* Desktop Persistent Sidebar */}
-      <aside className="hidden md:flex shrink-0 min-h-[calc(100vh-53px)] sticky top-[53px]">
+      <aside className="hidden md:flex shrink-0 h-full overflow-hidden select-none">
         {sidebarContent}
       </aside>
 
@@ -166,7 +168,7 @@ export const Sidebar = ({
             className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs transition-opacity"
             onClick={onCloseMobile}
           />
-          <div className="relative z-10 animate-in slide-in-from-left duration-200">
+          <div className="relative z-10 animate-in slide-in-from-left duration-200 h-full">
             {sidebarContent}
           </div>
         </div>

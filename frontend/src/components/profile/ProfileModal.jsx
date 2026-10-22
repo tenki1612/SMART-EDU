@@ -1,7 +1,9 @@
 import React, { useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { accountsApi } from '../../services/api';
+import { UserAvatar } from '../common/UserAvatar';
 import {
   X,
   Upload,
@@ -13,10 +15,8 @@ import {
   User,
   Mail,
   Phone,
-  Shield,
   RefreshCw,
-  KeyRound,
-  ExternalLink
+  KeyRound
 } from 'lucide-react';
 
 const PRESET_AVATARS = [
@@ -63,11 +63,11 @@ export const ProfileModal = ({ isOpen, onClose }) => {
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
-      toast.warning('Vui lòng chọn tệp định dạng hình ảnh!');
+      toast.warning('Vui lòng chọn tệp định dạng hình ảnh (PNG, JPG, WEBP)!');
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
-      toast.warning('Kích thước ảnh tối đa là 5MB!');
+      toast.warning('Kích thước ảnh tối đa cho phép là 5MB!');
       return;
     }
 
@@ -76,9 +76,9 @@ export const ProfileModal = ({ isOpen, onClose }) => {
       const res = await accountsApi.uploadMyAvatar(file);
       const newUrl = res.data.avatar_url;
       updateUserProfile({ avatar_url: newUrl });
-      toast.success('Tải lên và đổi ảnh đại diện thành công!');
+      toast.success('Tải lên và cập nhật ảnh đại diện thành công!');
     } catch (err) {
-      toast.error(err.message || 'Lỗi khi tải ảnh đại diện lên.');
+      toast.error(err.message || 'Lỗi khi tải ảnh đại diện lên máy chủ.');
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -99,19 +99,22 @@ export const ProfileModal = ({ isOpen, onClose }) => {
     }
   };
 
-  // 3. Apply custom image URL
+  // 3. Apply custom URL
   const handleApplyCustomUrl = async (e) => {
     e.preventDefault();
-    if (!customUrl.trim()) return;
+    if (!customUrl.trim()) {
+      toast.warning('Vui lòng nhập đường dẫn hình ảnh hợp lệ!');
+      return;
+    }
 
     setIsUploading(true);
     try {
       const res = await accountsApi.updateMyAvatar(customUrl.trim());
       updateUserProfile({ avatar_url: res.data.avatar_url });
-      toast.success('Đã cập nhật ảnh đại diện từ đường dẫn URL!');
+      toast.success('Đã cập nhật ảnh đại diện từ URL thành công!');
       setCustomUrl('');
     } catch (err) {
-      toast.error(err.message || 'Lỗi khi cập nhật ảnh đại diện.');
+      toast.error(err.message || 'Không thể cập nhật ảnh đại diện.');
     } finally {
       setIsUploading(false);
     }
@@ -119,31 +122,28 @@ export const ProfileModal = ({ isOpen, onClose }) => {
 
   // 4. Remove avatar
   const handleRemoveAvatar = async () => {
-    if (!user.avatar_url) return;
-    if (!window.confirm('Bạn có chắc chắn muốn gỡ bỏ ảnh đại diện và quay về chữ cái mặc định?')) return;
+    if (!window.confirm('Bạn có chắc chắn muốn gỡ bỏ ảnh đại diện và quay về chữ cái mặc định?')) {
+      return;
+    }
 
     setIsUploading(true);
     try {
       await accountsApi.deleteMyAvatar();
       updateUserProfile({ avatar_url: null });
-      toast.success('Đã gỡ bỏ ảnh đại diện thành công!');
+      toast.success('Đã gỡ ảnh đại diện thành công!');
     } catch (err) {
-      toast.error(err.message || 'Lỗi khi gỡ ảnh đại diện.');
+      toast.error(err.message || 'Không thể gỡ ảnh đại diện.');
     } finally {
       setIsUploading(false);
     }
   };
 
-  // 5. Update personal information
+  // 5. Save personal info
   const handleSaveInfo = async (e) => {
     e.preventDefault();
     setIsSavingInfo(true);
     try {
-      const res = await accountsApi.updateMyProfile({
-        full_name: infoForm.full_name.trim(),
-        phone: infoForm.phone ? infoForm.phone.trim() : null,
-        email: infoForm.email.trim(),
-      });
+      const res = await accountsApi.updateMyProfile(infoForm);
       updateUserProfile({
         full_name: res.data.full_name,
         phone: res.data.phone,
@@ -176,7 +176,7 @@ export const ProfileModal = ({ isOpen, onClose }) => {
       setPwdForm({ old_password: '', new_password: '', confirm_password: '' });
       setActiveTab('info');
     } catch (err) {
-      toast.error(err.message || 'Không thể đổi mật khẩu.');
+      toast.error(err.message || 'Không thể đổi mật khẩu. Vui lòng kiểm tra lại mật khẩu hiện tại.');
     } finally {
       setIsChangingPwd(false);
     }
@@ -199,9 +199,17 @@ export const ProfileModal = ({ isOpen, onClose }) => {
     }
   };
 
-  return (
-    <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
-      <div className="bg-white rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl border border-slate-200 relative overflow-hidden max-h-[90vh] flex flex-col">
+  // Render modal into document.body via Portal to prevent any parent backdrop-filter / transform containing block issues
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-200">
+      {/* Click backdrop to close */}
+      <div
+        className="fixed inset-0 bg-transparent"
+        onClick={onClose}
+        aria-hidden="true"
+      />
+
+      <div className="bg-white rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl border border-slate-200 relative overflow-hidden my-auto max-h-[90vh] flex flex-col z-10">
         
         {/* Header bar */}
         <div className="flex items-center justify-between pb-4 border-b border-slate-100 shrink-0">
@@ -219,8 +227,10 @@ export const ProfileModal = ({ isOpen, onClose }) => {
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="w-8 h-8 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 flex items-center justify-center font-bold text-sm cursor-pointer transition"
+            className="w-8 h-8 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 flex items-center justify-center font-bold text-sm cursor-pointer transition active:scale-95"
+            title="Đóng cửa sổ"
           >
             <X className="w-4 h-4" />
           </button>
@@ -229,6 +239,7 @@ export const ProfileModal = ({ isOpen, onClose }) => {
         {/* Tab Navigation */}
         <div className="flex items-center gap-2 mt-4 pb-2 border-b border-slate-100 text-xs font-bold shrink-0">
           <button
+            type="button"
             onClick={() => setActiveTab('avatar')}
             className={`px-3.5 py-2 rounded-xl transition cursor-pointer flex items-center gap-1.5 ${
               activeTab === 'avatar'
@@ -241,6 +252,7 @@ export const ProfileModal = ({ isOpen, onClose }) => {
           </button>
 
           <button
+            type="button"
             onClick={() => setActiveTab('info')}
             className={`px-3.5 py-2 rounded-xl transition cursor-pointer flex items-center gap-1.5 ${
               activeTab === 'info'
@@ -253,6 +265,7 @@ export const ProfileModal = ({ isOpen, onClose }) => {
           </button>
 
           <button
+            type="button"
             onClick={() => setActiveTab('password')}
             className={`px-3.5 py-2 rounded-xl transition cursor-pointer flex items-center gap-1.5 ${
               activeTab === 'password'
@@ -266,7 +279,7 @@ export const ProfileModal = ({ isOpen, onClose }) => {
         </div>
 
         {/* Scrollable Content Body */}
-        <div className="overflow-y-auto flex-1 py-4 space-y-6 text-xs">
+        <div className="overflow-y-auto flex-1 py-4 space-y-6 text-xs pr-1">
           
           {/* TAB 1: AVATAR MANAGEMENT */}
           {activeTab === 'avatar' && (
@@ -275,23 +288,18 @@ export const ProfileModal = ({ isOpen, onClose }) => {
               {/* Current Avatar Spotlight */}
               <div className="flex flex-col sm:flex-row items-center gap-5 bg-gradient-to-r from-slate-50 to-indigo-50/40 p-5 rounded-2xl border border-slate-200/80">
                 <div className="relative group shrink-0">
-                  <div className="w-24 h-24 rounded-3xl overflow-hidden ring-4 ring-white shadow-lg bg-indigo-600 flex items-center justify-center text-white font-black text-3xl">
-                    {user.avatar_url ? (
-                      <img
-                        src={user.avatar_url}
-                        alt={user.full_name}
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          e.target.style.display = 'none';
-                        }}
-                      />
-                    ) : (
-                      <span>{user.full_name?.charAt(0)?.toUpperCase() || 'U'}</span>
-                    )}
-                  </div>
+                  <UserAvatar
+                    avatarUrl={user.avatar_url}
+                    name={user.full_name}
+                    role={user.role}
+                    size="2xl"
+                    shape="rounded-3xl"
+                    className="ring-4 ring-white shadow-lg"
+                  />
 
                   {/* Overlay upload button */}
                   <button
+                    type="button"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={isUploading}
                     className="absolute inset-0 bg-slate-900/50 backdrop-blur-2xs rounded-3xl opacity-0 group-hover:opacity-100 transition flex flex-col items-center justify-center text-white text-[10px] font-bold cursor-pointer"
@@ -302,9 +310,9 @@ export const ProfileModal = ({ isOpen, onClose }) => {
                   </button>
                 </div>
 
-                <div className="space-y-2 text-center sm:text-left flex-1">
+                <div className="space-y-2 text-center sm:text-left flex-1 min-w-0">
                   <div>
-                    <h4 className="text-base font-black text-slate-900">{user.full_name}</h4>
+                    <h4 className="text-base font-black text-slate-900 truncate">{user.full_name}</h4>
                     <span className="text-xs text-slate-500 font-mono">@{user.username}</span>
                   </div>
 
@@ -312,7 +320,7 @@ export const ProfileModal = ({ isOpen, onClose }) => {
                     <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${getRoleBadge(user.role)}`}>
                       {user.role}
                     </span>
-                    <span className="text-[10px] text-slate-400">ID: #{user.id}</span>
+                    <span className="text-[10px] text-slate-400 font-mono">ID: #{user.id}</span>
                   </div>
 
                   {/* Actions for current avatar */}
@@ -328,7 +336,7 @@ export const ProfileModal = ({ isOpen, onClose }) => {
                       type="button"
                       disabled={isUploading}
                       onClick={() => fileInputRef.current?.click()}
-                      className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95 disabled:opacity-50"
+                      className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95 disabled:opacity-50"
                     >
                       <Upload className="w-3.5 h-3.5" />
                       <span>{isUploading ? 'Đang tải...' : 'Tải ảnh từ máy'}</span>
@@ -339,7 +347,7 @@ export const ProfileModal = ({ isOpen, onClose }) => {
                         type="button"
                         disabled={isUploading}
                         onClick={handleRemoveAvatar}
-                        className="px-3 py-1.5 rounded-xl border border-rose-200 text-rose-600 hover:bg-rose-50 font-bold text-[11px] flex items-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-50"
+                        className="px-3.5 py-2 rounded-xl border border-rose-200 text-rose-600 hover:bg-rose-50 font-bold text-[11px] flex items-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-50"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                         <span>Gỡ ảnh</span>
@@ -379,6 +387,7 @@ export const ProfileModal = ({ isOpen, onClose }) => {
                           src={preset.url}
                           alt={preset.label}
                           className="w-full h-full object-contain rounded-xl"
+                          loading="lazy"
                         />
                         {isSelected && (
                           <div className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-indigo-600 text-white flex items-center justify-center shadow-xs">
@@ -408,7 +417,7 @@ export const ProfileModal = ({ isOpen, onClose }) => {
                   <button
                     type="submit"
                     disabled={isUploading || !customUrl.trim()}
-                    className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-xl cursor-pointer disabled:opacity-40"
+                    className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-xl cursor-pointer disabled:opacity-40 transition"
                   >
                     Áp dụng
                   </button>
@@ -478,7 +487,7 @@ export const ProfileModal = ({ isOpen, onClose }) => {
                 <button
                   type="submit"
                   disabled={isSavingInfo}
-                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-xs cursor-pointer flex items-center gap-1.5 active:scale-95 disabled:opacity-50"
+                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-xs cursor-pointer flex items-center gap-1.5 active:scale-95 disabled:opacity-50 transition"
                 >
                   {isSavingInfo ? (
                     <>
@@ -539,7 +548,7 @@ export const ProfileModal = ({ isOpen, onClose }) => {
                 <button
                   type="submit"
                   disabled={isChangingPwd}
-                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-xs cursor-pointer flex items-center gap-1.5 active:scale-95 disabled:opacity-50"
+                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-xs cursor-pointer flex items-center gap-1.5 active:scale-95 disabled:opacity-50 transition"
                 >
                   {isChangingPwd ? (
                     <>
@@ -560,6 +569,7 @@ export const ProfileModal = ({ isOpen, onClose }) => {
         </div>
 
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

@@ -64,17 +64,19 @@ const MainApp = () => {
     };
 
     return (
-        <div className="min-h-screen flex flex-col bg-slate-100/80 text-slate-900 selection:bg-indigo-600 selection:text-white">
+        <div className="h-screen w-screen overflow-hidden flex flex-col bg-slate-100/80 text-slate-900 selection:bg-indigo-600 selection:text-white">
             <Navbar onToggleMobileMenu={() => setMobileMenuOpen(!mobileMenuOpen)} />
-            <div className="flex-1 flex">
+            <div className="flex-1 flex overflow-hidden min-h-0 w-full">
                 <Sidebar
                     currentTab={currentTab}
                     onTabChange={setCurrentTab}
                     mobileOpen={mobileMenuOpen}
                     onCloseMobile={() => setMobileMenuOpen(false)}
                 />
-                <main className="flex-1 p-5 sm:p-7 max-w-7xl mx-auto w-full overflow-y-auto">
-                    {renderContent()}
+                <main className="flex-1 h-full overflow-y-auto min-h-0 min-w-0 bg-slate-100/80">
+                    <div className="p-4 sm:p-6 lg:p-7 max-w-7xl mx-auto w-full">
+                        {renderContent()}
+                    </div>
                 </main>
             </div>
         </div>

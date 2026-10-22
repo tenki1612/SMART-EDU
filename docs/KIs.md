@@ -29,6 +29,7 @@ Tài liệu này lưu trữ các **Knowledge Items (KIs)** — các bài học k
 - **KI-20:** Quản Trị Phân Quyền An Toàn: Nâng Quyền Vai Trò, Khóa/Mở Khóa Tức Thì và Đồng Bộ Hồ Sơ Liên Kết
 - **KI-21:** Phân Loại Phản Hồi Lỗi Xác Thực Đa Tầng & Cơ Chế Tự Đăng Ký Tài Khoản (Self-Registration)
 - **KI-22:** Kiến Trúc Quản Lý Ảnh Đại Diện & Đồng Bộ Hồ Sơ Người Dùng Đa Phân Hệ (Avatar & Profile Management)
+- **KI-23:** Kiến Trúc Cuộn Độc Lập (Independent Dual-Scroll Shell) & Giải Quyết Bẫy CSS backdrop-filter Với React Portal
 
 ---
 
@@ -417,3 +418,44 @@ ightarrow$ Tăng số lần sai và báo lỗi *"Mật khẩu không chính xác
      - **Tab 3 - Đổi mật khẩu:** Xác thực mật khẩu cũ và đặt mật khẩu mới ngay trong phiên làm việc.
   3. *Tự Động Fallback Chữ Cái Viết Tắt (Initial Fallback UX):*
      - Khi `avatar_url` bị rỗng hoặc tải lỗi (`onError`), component tự động chuyển đổi sang vòng tròn màu gradient hiển thị chữ cái đầu tiên viết hoa của `full_name` hoặc `username`, đảm bảo giao diện luôn mượt mà và không bao giờ bị vỡ layout ảnh.
+
+
+---
+
+### [KI-23] Kiến Trúc Cuộn Độc Lập (Independent Dual-Scroll Shell) & Giải Quyết Bẫy CSS backdrop-filter Với React Portal
+- **Bối cảnh nghiệp vụ:**
+  - Trong các hệ thống quản trị đào tạo LMS/CRM quy mô lớn, bảng dữ liệu (như Sổ điểm, Danh sách Lớp học, Lịch học ma trận, Danh sách Tài khoản) thường có hàng chục đến hàng trăm dòng.
+  - Nếu áp dụng bố cục cuộn toàn trang (Page-level Scrolling), khi người dùng cuộn xem dữ liệu ở phía dưới:
+    + Thanh điều hướng chính (Navbar) và menu chức năng bên trái (Sidebar) bị trôi mất khỏi màn hình, buộc người dùng phải cuộn ngược lên đầu trang mỗi khi muốn đổi phân hệ.
+    + Khi bảng quá dài, menu bên trái không thể cuộn riêng lẻ nếu màn hình máy tính xách tay có chiều dọc hạn chế.
+  - Đồng thời, khi thanh công cụ `Navbar` có hiệu ứng mờ kính `backdrop-blur-md` (thuộc tính CSS `backdrop-filter`), modal mở từ thanh công cụ bị cắt mất phần trên do hiện tượng bẫy Containing Block.
+- **Bẫy Kỹ thuật 1: Hiện tượng CSS Containing Block do `backdrop-filter`:**
+  - **Nguyên lý CSS W3C:** Thuộc tính `backdrop-filter`, `transform`, `filter` hoặc `perspective` khi áp dụng lên một phần tử cha sẽ tự động biến phần tử cha đó thành một **Containing Block** và Stacking Context mới cho toàn bộ các phần tử con có `position: fixed`.
+  - **Hệ quả:** Thẻ modal có `position: fixed; inset: 0;` thay vì lấy kích thước toàn màn hình viewport (100vw x 100vh) thì lại lấy kích thước của chính thanh `<header>` (~53px). Khi container áp dụng `items-center justify-center`, tâm của modal bị đặt ở vị trí Y = 26px -> Toàn bộ nửa trên của modal (tiêu đề, nút X, tabs) bị đẩy lên trên mép màn hình (tọa độ âm) và người dùng không thể thao tác được.
+  - **Giải pháp dứt điểm:** Sử dụng **React Portal (`createPortal(modalJSX, document.body)`)**. Modal được render trực tiếp vào gốc `document.body`, thoát hoàn toàn khỏi cây phân cấp của `<header>` và mọi phần tử có `backdrop-filter`, đảm bảo luôn chiếm toàn bộ màn hình thực và căn giữa tuyệt đối.
+- **Bẫy Kỹ thuật 2: Kiến Trúc Cuộn Độc Lập (Dual-Scroll Dashboard Shell):**
+  - **Cấu trúc Container chuẩn:**
+    ```html
+    <div className="h-screen w-screen overflow-hidden flex flex-col">
+      <!-- 1. Navbar: Cố định tuyệt đối trên cùng, không cuộn -->
+      <header className="shrink-0 z-30">...</header>
+
+      <!-- 2. Workspace Body: Chiếm trọn 100% không gian còn lại -->
+      <div className="flex-1 flex overflow-hidden min-h-0 w-full">
+        <!-- 2.1. Sidebar: Cuộn độc lập khi menu dài -->
+        <aside className="hidden md:flex shrink-0 h-full overflow-hidden">
+          <nav className="flex-1 overflow-y-auto dark-scrollbar min-h-0">...</nav>
+        </aside>
+
+        <!-- 2.2. Main Content: Cuộn độc lập toàn bộ bảng & dữ liệu -->
+        <main className="flex-1 h-full overflow-y-auto min-h-0 min-w-0 bg-slate-100/80">
+          <div className="p-4 sm:p-6 lg:p-7 max-w-7xl mx-auto w-full">
+            {content}
+          </div>
+        </main>
+      </div>
+    </div>
+    ```
+  - **Lưu ý cốt lõi:**
+    + Trong Flexbox, khi muốn một flex-item cuộn bằng `overflow-y-auto`, bắt buộc phải đặt `min-h-0` trên các container cha trung gian, nếu không flex-item sẽ tự động nở chiều cao theo nội dung con thay vì co lại và kích hoạt thanh cuộn.
+    + Áp dụng lớp tùy chỉnh `.dark-scrollbar` cho sidebar tông tối và `custom-scrollbar` cho vùng nội dung sáng, giúp trải nghiệm cuộn liền mạch và thẩm mỹ cao.
