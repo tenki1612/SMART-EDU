@@ -119,6 +119,10 @@ export const teachersApi = {
         const res = await apiClient.get('/teachers/', { params: { q } });
         return res.data;
     },
+    getSchedule: async (id) => {
+        const res = await apiClient.get(`/teachers/${id}/schedule`);
+        return res.data;
+    },
 };
 
 // 6. Classes API
