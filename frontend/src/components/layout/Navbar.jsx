@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { GraduationCap, LogOut, Menu, Calendar, Shield, Sparkles } from 'lucide-react';
+import { GraduationCap, LogOut, Menu, Calendar, Shield, Sparkles, Camera } from 'lucide-react';
+import { ProfileModal } from '../profile/ProfileModal';
 
 const roleMeta = {
   ADMIN: {
@@ -37,6 +38,7 @@ const roleMeta = {
 
 export const Navbar = ({ onToggleMobileMenu }) => {
   const { user, logout } = useAuth();
+  const [showProfileModal, setShowProfileModal] = useState(false);
   const currentRole = user?.role || 'STUDENT';
   const roleInfo = roleMeta[currentRole] || roleMeta.STUDENT;
 
@@ -103,13 +105,35 @@ export const Navbar = ({ onToggleMobileMenu }) => {
         {/* User Profile & Logout Action */}
         <div className="flex items-center gap-3">
           {user && (
-            <div className="flex items-center gap-2.5 bg-slate-800/90 hover:bg-slate-800 transition border border-slate-700/70 py-1.5 px-3 rounded-2xl shadow-xs">
-              <div className={`w-8 h-8 rounded-xl bg-gradient-to-tr ${roleInfo.gradient} text-white flex items-center justify-center font-black text-xs shadow-xs`}>
-                {user.full_name?.charAt(0)?.toUpperCase() || 'U'}
+            <button
+              type="button"
+              onClick={() => setShowProfileModal(true)}
+              className="flex items-center gap-2.5 bg-slate-800/90 hover:bg-slate-800 hover:border-indigo-500/50 transition border border-slate-700/70 py-1.5 px-3 rounded-2xl shadow-xs cursor-pointer group text-left"
+              title="Xem hồ sơ & Đổi ảnh đại diện cá nhân"
+            >
+              <div className="relative">
+                <div className={`w-8 h-8 rounded-xl bg-gradient-to-tr ${roleInfo.gradient} text-white flex items-center justify-center font-black text-xs shadow-xs overflow-hidden`}>
+                  {user.avatar_url ? (
+                    <img
+                      src={user.avatar_url}
+                      alt={user.full_name}
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        e.target.style.display = 'none';
+                      }}
+                    />
+                  ) : (
+                    <span>{user.full_name?.charAt(0)?.toUpperCase() || 'U'}</span>
+                  )}
+                </div>
+                <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-slate-900 border border-slate-700 flex items-center justify-center text-slate-300 opacity-0 group-hover:opacity-100 transition shadow-2xs">
+                  <Camera className="w-2 h-2 text-indigo-400" />
+                </div>
               </div>
+
               <div className="text-left hidden sm:block">
-                <div className="text-xs font-bold text-white leading-tight">
-                  {user.full_name}
+                <div className="text-xs font-bold text-white leading-tight group-hover:text-indigo-300 transition-colors flex items-center gap-1">
+                  <span>{user.full_name}</span>
                 </div>
                 <div className="flex items-center gap-1.5 mt-0.5">
                   <span className={`w-1.5 h-1.5 rounded-full ${roleInfo.dotClass}`} />
@@ -118,7 +142,7 @@ export const Navbar = ({ onToggleMobileMenu }) => {
                   </span>
                 </div>
               </div>
-            </div>
+            </button>
           )}
 
           <button
@@ -132,6 +156,12 @@ export const Navbar = ({ onToggleMobileMenu }) => {
         </div>
 
       </div>
+
+      {/* Profile & Avatar Modal */}
+      <ProfileModal
+        isOpen={showProfileModal}
+        onClose={() => setShowProfileModal(false)}
+      />
     </header>
   );
 };

@@ -52,6 +52,7 @@ class AccountService:
             hashed_password=get_password_hash(data.password),
             role=data.role,
             phone=data.phone,
+            avatar_url=data.avatar_url,
             is_active=True
         )
         db.add(user)
@@ -158,12 +159,24 @@ class AccountService:
             user.full_name = data.full_name
         if data.phone is not None:
             user.phone = data.phone
+        if data.avatar_url is not None:
+            user.avatar_url = data.avatar_url
         if data.is_active is not None:
             user.is_active = data.is_active
             if data.is_active:
                 user.locked_until = None
                 user.failed_login_attempts = 0
         
+        db.commit()
+        db.refresh(user)
+        return user
+
+    @staticmethod
+    def update_user_avatar(db: Session, user_id: int, avatar_url: Optional[str]) -> User:
+        user = db.query(User).filter(User.id == user_id, User.is_deleted == False).first()
+        if not user:
+            raise NotFoundException("Người dùng", user_id)
+        user.avatar_url = avatar_url
         db.commit()
         db.refresh(user)
         return user

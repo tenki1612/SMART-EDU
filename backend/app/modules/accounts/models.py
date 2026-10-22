@@ -14,6 +14,7 @@ class User(Base, TimestampMixin):
     hashed_password = Column(String(255), nullable=False)
     role = Column(SQLEnum(RoleEnum), default=RoleEnum.STUDENT, nullable=False)
     phone = Column(String(20), nullable=True)
+    avatar_url = Column(String(500), nullable=True)
     is_active = Column(Boolean, default=True)
 
     # Security: Login Lockout & Password Reset

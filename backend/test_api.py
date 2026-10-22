@@ -405,6 +405,44 @@ def run_tests():
     assert "access_token" in new_student_login.json()["data"]
     print("✓ 14.5. Newly Registered Student Login: PASSED")
 
+    # ================= 15. AVATAR & PROFILE MANAGEMENT =================
+    # 15.1. Update avatar via preset URL
+    preset_avatar = "https://api.dicebear.com/7.x/adventurer/svg?seed=Felix"
+    avatar_url_res = client.patch("/api/v1/accounts/me/avatar", json={
+        "avatar_url": preset_avatar
+    }, headers=headers)
+    assert avatar_url_res.status_code == 200
+    assert avatar_url_res.json()["data"]["avatar_url"] == preset_avatar
+    print("✓ 15.1. Update Avatar via URL/Preset: PASSED")
+
+    # 15.2. Upload avatar image file
+    fake_png = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15c4\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+    upload_res = client.post(
+        "/api/v1/accounts/me/avatar/upload",
+        files={"file": ("test_avatar.png", fake_png, "image/png")},
+        headers=headers
+    )
+    assert upload_res.status_code == 200
+    uploaded_url = upload_res.json()["data"]["avatar_url"]
+    assert "uploads/avatars/avatar_" in uploaded_url
+    print("✓ 15.2. Upload Avatar Image File: PASSED")
+
+    # 15.3. Update profile personal info
+    update_prof_res = client.put("/api/v1/accounts/me", json={
+        "full_name": "Nguyễn Văn Quản Trị Cập Nhật",
+        "phone": "0999888777",
+        "email": "admin_updated@center.edu.vn"
+    }, headers=headers)
+    assert update_prof_res.status_code == 200
+    assert update_prof_res.json()["data"]["full_name"] == "Nguyễn Văn Quản Trị Cập Nhật"
+    print("✓ 15.3. Update Personal Profile Info: PASSED")
+
+    # 15.4. Remove avatar
+    del_avatar_res = client.delete("/api/v1/accounts/me/avatar", headers=headers)
+    assert del_avatar_res.status_code == 200
+    assert del_avatar_res.json()["data"]["avatar_url"] is None
+    print("✓ 15.4. Remove Avatar & Reset: PASSED")
+
     print("\n🎉 ALL BACKEND INTEGRATION TESTS PASSED (100% SUCCESS)!")
 
 if __name__ == "__main__":

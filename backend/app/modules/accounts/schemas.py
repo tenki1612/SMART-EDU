@@ -10,12 +10,17 @@ class UserCreate(BaseModel):
     password: str
     role: RoleEnum
     phone: Optional[str] = None
+    avatar_url: Optional[str] = None
 
 class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
     full_name: Optional[str] = None
     phone: Optional[str] = None
+    avatar_url: Optional[str] = None
     is_active: Optional[bool] = None
+
+class AvatarUpdateRequest(BaseModel):
+    avatar_url: Optional[str] = None
 
 class RoleUpdateRequest(BaseModel):
     role: RoleEnum
@@ -34,6 +39,7 @@ class UserResponse(BaseModel):
     full_name: str
     role: RoleEnum
     phone: Optional[str] = None
+    avatar_url: Optional[str] = None
     is_active: bool
     failed_login_attempts: int = 0
     locked_until: Optional[datetime] = None

@@ -1,5 +1,7 @@
+import os
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from app.core.config import settings
@@ -24,6 +26,8 @@ def ensure_schema():
                 conn.exec_driver_sql("ALTER TABLE users ADD COLUMN reset_token VARCHAR(100)")
             if "reset_token_expires_at" not in existing_cols:
                 conn.exec_driver_sql("ALTER TABLE users ADD COLUMN reset_token_expires_at DATETIME")
+            if "avatar_url" not in existing_cols:
+                conn.exec_driver_sql("ALTER TABLE users ADD COLUMN avatar_url VARCHAR(500)")
             conn.commit()
         except Exception:
             pass
@@ -38,6 +42,11 @@ app = FastAPI(
     redoc_url="/redoc",
     openapi_url="/openapi.json"
 )
+
+# Static Uploads directory
+UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "uploads")
+os.makedirs(os.path.join(UPLOAD_DIR, "avatars"), exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 # CORS Middleware
 app.add_middleware(

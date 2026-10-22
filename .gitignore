@@ -53,3 +53,8 @@ Thumbs.db
 
 # SQLite temporary journal files
 *.db-journal
+
+# Uploaded media files
+backend/uploads/avatars/*
+!backend/uploads/avatars/.gitkeep
+

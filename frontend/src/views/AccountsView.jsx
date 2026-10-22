@@ -130,6 +130,7 @@ export const AccountsView = () => {
       full_name: u.full_name,
       email: u.email,
       phone: u.phone || '',
+      avatar_url: u.avatar_url || '',
       is_active: u.is_active,
     });
     setShowEditModal(true);
@@ -143,6 +144,7 @@ export const AccountsView = () => {
         full_name: editUserForm.full_name.trim(),
         email: editUserForm.email.trim(),
         phone: editUserForm.phone ? editUserForm.phone.trim() : null,
+        avatar_url: editUserForm.avatar_url ? editUserForm.avatar_url.trim() : null,
         is_active: editUserForm.is_active,
       });
       toast.success(`Cập nhật thông tin tài khoản ${editingUser.username} thành công!`);
@@ -471,14 +473,25 @@ export const AccountsView = () => {
                       {/* USER IDENTITY */}
                       <td className="p-4 pl-5">
                         <div className="flex items-center gap-3">
-                          <div className={`w-9 h-9 rounded-2xl flex items-center justify-center font-black text-xs shrink-0 ${
+                          <div className={`w-9 h-9 rounded-2xl flex items-center justify-center font-black text-xs shrink-0 overflow-hidden shadow-2xs ${
                             u.role === 'ADMIN' ? 'bg-rose-100 text-rose-700' :
                             u.role === 'ACADEMIC_STAFF' ? 'bg-purple-100 text-purple-700' :
                             u.role === 'TEACHER' ? 'bg-sky-100 text-sky-700' :
                             u.role === 'STUDENT' ? 'bg-emerald-100 text-emerald-700' :
                             'bg-amber-100 text-amber-800'
                           }`}>
-                            {u.full_name?.charAt(0) || u.username.charAt(0).toUpperCase()}
+                            {u.avatar_url ? (
+                              <img
+                                src={u.avatar_url}
+                                alt={u.full_name}
+                                className="w-full h-full object-cover"
+                                onError={(e) => {
+                                  e.target.style.display = 'none';
+                                }}
+                              />
+                            ) : (
+                              u.full_name?.charAt(0) || u.username.charAt(0).toUpperCase()
+                            )}
                           </div>
                           <div>
                             <div className="flex items-center gap-1.5">
@@ -978,6 +991,17 @@ export const AccountsView = () => {
                   value={editUserForm.phone}
                   onChange={(e) => setEditUserForm({ ...editUserForm, phone: e.target.value })}
                   className="w-full border border-slate-300 p-2.5 rounded-xl font-medium outline-hidden focus:border-indigo-600"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">Đường dẫn ảnh đại diện (Avatar URL):</label>
+                <input
+                  type="url"
+                  placeholder="https://..."
+                  value={editUserForm.avatar_url}
+                  onChange={(e) => setEditUserForm({ ...editUserForm, avatar_url: e.target.value })}
+                  className="w-full border border-slate-300 p-2.5 rounded-xl font-mono text-[11px] outline-hidden focus:border-indigo-600"
                 />
               </div>
 

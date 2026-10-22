@@ -28,6 +28,7 @@ Tài liệu này lưu trữ các **Knowledge Items (KIs)** — các bài học k
 - **KI-19:** Phòng Vệ Chống Tấn Công Dò Mật Khẩu (Brute-force Lockout) & Khôi Phục Mật Khẩu Bằng Mã OTP
 - **KI-20:** Quản Trị Phân Quyền An Toàn: Nâng Quyền Vai Trò, Khóa/Mở Khóa Tức Thì và Đồng Bộ Hồ Sơ Liên Kết
 - **KI-21:** Phân Loại Phản Hồi Lỗi Xác Thực Đa Tầng & Cơ Chế Tự Đăng Ký Tài Khoản (Self-Registration)
+- **KI-22:** Kiến Trúc Quản Lý Ảnh Đại Diện & Đồng Bộ Hồ Sơ Người Dùng Đa Phân Hệ (Avatar & Profile Management)
 
 ---
 
@@ -368,11 +369,16 @@ Tài liệu này lưu trữ các **Knowledge Items (KIs)** — các bài học k
   - Người dùng mới (Học viên, Phụ huynh) cần có khả năng tự đăng ký tài khoản tham gia học tập mà không cần chờ Admin tạo thủ công.
 - **Giải pháp Kiến trúc Backend (Detailed Authentication Error Differentiation):**
   1. *Quy trình Kiểm tra 5 Tầng Phân Biệt (`AuthService.authenticate_user`):*
-     - **Tầng 1 (Tồn tại):** Tìm tài khoản theo username hoặc email trong toàn bộ cơ sở dữ liệu (kể cả bản ghi `is_deleted`). Nếu không tìm thấy $ightarrow$ Báo lỗi *"Tài khoản không tồn tại trong hệ thống. Vui lòng kiểm tra lại thông tin hoặc đăng ký tài khoản mới."*
-     - **Tầng 2 (Đã xóa):** Nếu `user.is_deleted == True` $ightarrow$ Báo lỗi *"Tài khoản này đã bị xóa khỏi hệ thống. Vui lòng liên hệ ban quản trị để được hỗ trợ."*
-     - **Tầng 3 (Khóa bởi Admin):** Nếu `user.is_active == False` $ightarrow$ Báo lỗi *"Tài khoản của bạn đã bị Quản trị viên khóa hoặc vô hiệu hóa. Vui lòng liên hệ ban quản trị để được hỗ trợ."*
-     - **Tầng 4 (Khóa tạm thời 15p):** Nếu `user.locked_until > now` $ightarrow$ Báo lỗi *"Tài khoản của bạn đã bị khóa tạm thời do nhập sai mật khẩu quá 5 lần. Vui lòng thử lại sau X phút..."*
-     - **Tầng 5 (Sai mật khẩu):** So khớp Bcrypt. Nếu sai $ightarrow$ Tăng số lần sai và báo lỗi *"Mật khẩu không chính xác. Bạn còn {5 - attempts} lần thử trước khi tài khoản bị khóa tạm thời."*
+     - **Tầng 1 (Tồn tại):** Tìm tài khoản theo username hoặc email trong toàn bộ cơ sở dữ liệu (kể cả bản ghi `is_deleted`). Nếu không tìm thấy $
+ightarrow$ Báo lỗi *"Tài khoản không tồn tại trong hệ thống. Vui lòng kiểm tra lại thông tin hoặc đăng ký tài khoản mới."*
+     - **Tầng 2 (Đã xóa):** Nếu `user.is_deleted == True` $
+ightarrow$ Báo lỗi *"Tài khoản này đã bị xóa khỏi hệ thống. Vui lòng liên hệ ban quản trị để được hỗ trợ."*
+     - **Tầng 3 (Khóa bởi Admin):** Nếu `user.is_active == False` $
+ightarrow$ Báo lỗi *"Tài khoản của bạn đã bị Quản trị viên khóa hoặc vô hiệu hóa. Vui lòng liên hệ ban quản trị để được hỗ trợ."*
+     - **Tầng 4 (Khóa tạm thời 15p):** Nếu `user.locked_until > now` $
+ightarrow$ Báo lỗi *"Tài khoản của bạn đã bị khóa tạm thời do nhập sai mật khẩu quá 5 lần. Vui lòng thử lại sau X phút..."*
+     - **Tầng 5 (Sai mật khẩu):** So khớp Bcrypt. Nếu sai $
+ightarrow$ Tăng số lần sai và báo lỗi *"Mật khẩu không chính xác. Bạn còn {5 - attempts} lần thử trước khi tài khoản bị khóa tạm thời."*
   2. *Quy trình Tự Đăng Ký Tài Khoản (`POST /api/v1/auth/register`):*
      - Cho phép tự đăng ký với vai trò `STUDENT` hoặc `PARENT`.
      - Tự động chuẩn hóa `username` và `email` (lowercase, trim).
@@ -382,3 +388,32 @@ Tài liệu này lưu trữ các **Knowledge Items (KIs)** — các bài học k
 - **Trải nghiệm Giao diện Frontend (`LoginView.jsx`):**
   - Khối hiển thị lỗi có icon chuyên biệt theo từng loại: `UserX` (Không tồn tại), `Trash2` (Đã bị xóa), `Lock` (Khóa bởi Admin), `ShieldAlert` (Khóa tạm thời), `AlertTriangle` (Sai mật khẩu).
   - Tích hợp nút hành động ngữ cảnh (Contextual Actions): Nút *"Đăng ký tài khoản mới ngay"* xuất hiện ngay trong thẻ lỗi nếu tài khoản chưa có trong hệ thống.
+
+
+---
+
+### [KI-22] Kiến Trúc Quản Lý Ảnh Đại Diện & Đồng Bộ Hồ Sơ Người Dùng Đa Phân Hệ (Avatar & Profile Management)
+- **Bối cảnh nghiệp vụ:**
+  - Người dùng thuộc 5 phân quyền (`ADMIN`, `ACADEMIC_STAFF`, `TEACHER`, `STUDENT`, `PARENT`) có nhu cầu định danh trực quan qua ảnh đại diện cá nhân trên toàn bộ giao diện (Thanh điều hướng Navbar, Danh sách tài khoản, Bảng điểm, Lớp học).
+  - Yêu cầu cung cấp trải nghiệm linh hoạt: cho phép tải ảnh từ máy tính (PNG/JPG/WEBP), chọn từ bộ sưu tập avatar mẫu (DiceBear presets), nhập URL trực tiếp, hoặc gỡ bỏ ảnh về chữ cái viết tắt mặc định.
+- **Giải pháp Kiến trúc Backend (FastAPI Static Serving & File Upload Security):**
+  1. *Lưu trữ Tệp Tĩnh (Static Files Directory):*
+     - Tạo thư mục `backend/uploads/avatars` và mount tĩnh qua `app.mount("/uploads", StaticFiles(directory="backend/uploads"), name="uploads")`.
+     - URL sinh ra có dạng `/uploads/avatars/{filename}` được phục vụ trực tiếp với độ trễ thấp và hỗ trợ cache trình duyệt.
+  2. *Kiểm soát An toàn Tệp Tải Lên (File Upload Validation):*
+     - Giới hạn kích thước tệp <= 5MB để tránh tấn công cạn kiệt tài nguyên đĩa (Disk Flooding).
+     - Kiểm duyệt định dạng đuôi file (`.jpg`, `.jpeg`, `.png`, `.webp`) và kiểm tra content type ảnh hợp lệ.
+     - Sử dụng `uuid.uuid4().hex` để đặt tên file, ngăn chặn triệt để tấn công Path Traversal hoặc ghi đè file có sẵn.
+  3. *Thứ tự Định tuyến FastAPI (Routing Precedence Gotcha):*
+     - **Vấn đề gặp phải:** Trong `accounts/router.py`, nếu khai báo `/{user_id}` trước `/me`, khi người dùng gửi request `GET /api/v1/accounts/me`, FastAPI sẽ cố ép chuỗi `"me"` thành kiểu số `int` của `user_id` và trả về lỗi `422 Unprocessable Entity`.
+     - **Giải pháp:** Đặt toàn bộ các route đặc tả cá nhân (`/me`, `/me/avatar`, `/me/avatar/upload`) lên trước các route tham số hóa `/{user_id}`.
+- **Giải pháp Kiến trúc Frontend (React 19 Context Synchronization & Modal UI):**
+  1. *Đồng bộ Toàn cục qua AuthContext (`AuthContext.jsx`):*
+     - Bổ sung `avatar_url` vào state `user` và lưu trữ trong `localStorage`.
+     - Cung cấp hàm `updateUserProfile` và `refreshUser` để khi người dùng đổi avatar hoặc thông tin cá nhân trong modal, thanh `Navbar` và các view phụ thuộc lập tức cập nhật lại mà không cần tải lại trang.
+  2. *Modal Quản lý Hồ sơ 3 Tab (`ProfileModal.jsx`):*
+     - **Tab 1 - Đổi ảnh đại diện:** Hỗ trợ 4 chế độ: Tải tệp lên kèm vùng kéo thả trực quan, Chọn nhanh 8 mẫu Preset đồ họa ngộ nghĩnh, Nhập liên kết ảnh trực tiếp, và Nút Xóa ảnh. Có khung xem trước (Live Preview) tức thì.
+     - **Tab 2 - Thông tin cá nhân:** Cập nhật họ tên, email, số điện thoại và xem vai trò được gắn màu badge chuyên biệt.
+     - **Tab 3 - Đổi mật khẩu:** Xác thực mật khẩu cũ và đặt mật khẩu mới ngay trong phiên làm việc.
+  3. *Tự Động Fallback Chữ Cái Viết Tắt (Initial Fallback UX):*
+     - Khi `avatar_url` bị rỗng hoặc tải lỗi (`onError`), component tự động chuyển đổi sang vòng tròn màu gradient hiển thị chữ cái đầu tiên viết hoa của `full_name` hoặc `username`, đảm bảo giao diện luôn mượt mà và không bao giờ bị vỡ layout ảnh.

@@ -36,7 +36,7 @@ export const AuthProvider = ({ children }) => {
         try {
             const res = await authApi.login(username, password);
             if (res.success && res.data) {
-                const { access_token, user_id, username: uName, full_name, role } = res.data;
+                const { access_token, user_id, username: uName, full_name, role, avatar_url } = res.data;
                 localStorage.setItem('token', access_token);
                 setToken(access_token);
                 setUser({
@@ -45,6 +45,7 @@ export const AuthProvider = ({ children }) => {
                     email: `${uName}@center.edu.vn`,
                     full_name,
                     role,
+                    avatar_url: avatar_url || null,
                     is_active: true,
                 });
             }
@@ -59,7 +60,7 @@ export const AuthProvider = ({ children }) => {
         try {
             const res = await authApi.register(userData);
             if (res.success && res.data) {
-                const { access_token, user_id, username: uName, full_name, role } = res.data;
+                const { access_token, user_id, username: uName, full_name, role, avatar_url } = res.data;
                 localStorage.setItem('token', access_token);
                 setToken(access_token);
                 setUser({
@@ -68,6 +69,7 @@ export const AuthProvider = ({ children }) => {
                     email: userData.email,
                     full_name,
                     role,
+                    avatar_url: avatar_url || null,
                     is_active: true,
                 });
             }
@@ -75,6 +77,14 @@ export const AuthProvider = ({ children }) => {
         } finally {
             setIsLoading(false);
         }
+    };
+
+    const updateUserProfile = (updatedFields) => {
+        setUser((prev) => (prev ? { ...prev, ...updatedFields } : prev));
+    };
+
+    const refreshUser = async () => {
+        await fetchCurrentUser();
     };
 
     const logout = () => {
@@ -96,6 +106,8 @@ export const AuthProvider = ({ children }) => {
                 isLoading,
                 login,
                 register,
+                updateUserProfile,
+                refreshUser,
                 logout,
                 hasRole,
             }}

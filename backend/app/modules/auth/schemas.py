@@ -21,6 +21,7 @@ class TokenResponse(BaseModel):
     username: str
     full_name: str
     role: RoleEnum
+    avatar_url: Optional[str] = None
 
 class UserInfoResponse(BaseModel):
     id: int
@@ -29,6 +30,7 @@ class UserInfoResponse(BaseModel):
     full_name: str
     role: RoleEnum
     phone: Optional[str] = None
+    avatar_url: Optional[str] = None
     is_active: bool
 
     class Config:

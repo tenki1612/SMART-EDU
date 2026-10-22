@@ -89,6 +89,30 @@ export const accountsApi = {
         const res = await apiClient.post(`/accounts/${id}/reset-password`, { new_password });
         return res.data;
     },
+    getMe: async () => {
+        const res = await apiClient.get('/accounts/me');
+        return res.data;
+    },
+    updateMyProfile: async (data) => {
+        const res = await apiClient.put('/accounts/me', data);
+        return res.data;
+    },
+    updateMyAvatar: async (avatar_url) => {
+        const res = await apiClient.patch('/accounts/me/avatar', { avatar_url });
+        return res.data;
+    },
+    uploadMyAvatar: async (file) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        const res = await apiClient.post('/accounts/me/avatar/upload', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        return res.data;
+    },
+    deleteMyAvatar: async () => {
+        const res = await apiClient.delete('/accounts/me/avatar');
+        return res.data;
+    },
 };
 
 // 3. Courses API

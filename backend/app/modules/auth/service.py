@@ -95,7 +95,8 @@ class AuthService:
             user_id=user.id,
             username=user.username,
             full_name=user.full_name,
-            role=user.role
+            role=user.role,
+            avatar_url=user.avatar_url
         )
 
     @staticmethod
@@ -155,7 +156,8 @@ class AuthService:
             user_id=user.id,
             username=user.username,
             full_name=user.full_name,
-            role=user.role
+            role=user.role,
+            avatar_url=user.avatar_url
         )
 
     @staticmethod
