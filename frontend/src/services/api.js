@@ -73,6 +73,18 @@ export const accountsApi = {
         });
         return res.data;
     },
+    updateRole: async (id, role) => {
+        const res = await apiClient.patch(`/accounts/${id}/role`, { role });
+        return res.data;
+    },
+    toggleLock: async (id) => {
+        const res = await apiClient.patch(`/accounts/${id}/toggle-lock`);
+        return res.data;
+    },
+    adminResetPassword: async (id, new_password) => {
+        const res = await apiClient.post(`/accounts/${id}/reset-password`, { new_password });
+        return res.data;
+    },
 };
 
 // 3. Courses API

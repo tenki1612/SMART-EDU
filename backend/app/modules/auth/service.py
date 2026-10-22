@@ -43,12 +43,16 @@ class AuthService:
         if not user:
             raise BusinessException("Tên đăng nhập hoặc mật khẩu không chính xác.")
         
-        # 1. Kiểm tra tài khoản có đang bị khóa tạm thời không
+        # 1. Kiểm tra trạng thái hoạt động do Quản trị viên quản trị (Khóa tài khoản)
+        if not user.is_active:
+            raise BusinessException("Tài khoản của bạn đã bị Quản trị viên khóa hoặc vô hiệu hóa. Vui lòng liên hệ ban quản trị để được hỗ trợ.")
+
+        # 2. Kiểm tra tài khoản có đang bị khóa tạm thời do nhập sai quá 5 lần không
         is_locked, remaining_minutes = AuthService._check_account_lockout(user)
         if is_locked:
             raise BusinessException(
                 f"Tài khoản của bạn đã bị khóa tạm thời do nhập sai mật khẩu quá 5 lần. "
-                f"Vui lòng thử lại sau {remaining_minutes} phút hoặc sử dụng chức năng 'Quên mật khẩu' để khôi phục."
+                f"Vui lòng thử lại sau {remaining_minutes} phút hoặc liên hệ Quản trị viên để mở khóa ngay."
             )
         
         # Nếu thời gian khóa đã hết thì reset trạng thái
@@ -57,7 +61,7 @@ class AuthService:
             user.failed_login_attempts = 0
             db.commit()
 
-        # 2. Xác thực mật khẩu
+        # 3. Xác thực mật khẩu
         if not verify_password(creds.password, user.hashed_password):
             user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
             
@@ -74,10 +78,6 @@ class AuthService:
                 raise BusinessException(
                     f"Mật khẩu không chính xác. Bạn còn {remaining} lần thử trước khi tài khoản bị khóa tạm thời."
                 )
-
-        # 3. Kiểm tra kích hoạt tài khoản
-        if not user.is_active:
-            raise BusinessException("Tài khoản của bạn đã bị vô hiệu hóa.")
         
         # Đăng nhập thành công: reset số lần sai và thời gian khóa
         user.failed_login_attempts = 0

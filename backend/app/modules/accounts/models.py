@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from sqlalchemy import Column, String, Boolean, Integer, DateTime, Enum as SQLEnum
 from sqlalchemy.orm import relationship
 from app.core.database import Base
@@ -25,3 +26,17 @@ class User(Base, TimestampMixin):
     student_profile = relationship("Student", back_populates="user", uselist=False, cascade="all, delete-orphan")
     teacher_profile = relationship("Teacher", back_populates="user", uselist=False, cascade="all, delete-orphan")
     parent_links = relationship("ParentStudent", foreign_keys="ParentStudent.parent_user_id", back_populates="parent_user")
+
+    @property
+    def is_locked(self) -> bool:
+        """Kiểm tra tài khoản có đang bị khóa (vô hiệu hóa hoặc khóa tạm thời)"""
+        if not self.is_active:
+            return True
+        if self.locked_until:
+            now = datetime.now(timezone.utc)
+            locked_time = self.locked_until
+            if locked_time.tzinfo is None:
+                locked_time = locked_time.replace(tzinfo=timezone.utc)
+            return locked_time > now
+        return False
+

@@ -26,6 +26,7 @@ Tài liệu này lưu trữ các **Knowledge Items (KIs)** — các bài học k
 - **KI-17:** Cô Lập Dữ Liệu Điểm Số Cá Nhân & Giám Hộ (Data Privacy Isolation for Student & Parent)
 - **KI-18:** Thiết Kế Bảng Điều Khiển Chuyên Biệt Theo Vai Trò (Role-Tailored Dashboards Architecture)
 - **KI-19:** Phòng Vệ Chống Tấn Công Dò Mật Khẩu (Brute-force Lockout) & Khôi Phục Mật Khẩu Bằng Mã OTP
+- **KI-20:** Quản Trị Phân Quyền An Toàn: Nâng Quyền Vai Trò, Khóa/Mở Khóa Tức Thì và Đồng Bộ Hồ Sơ Liên Kết
 
 ---
 
@@ -333,3 +334,26 @@ Tài liệu này lưu trữ các **Knowledge Items (KIs)** — các bài học k
 - **Trải nghiệm Người dùng (Frontend UI/UX):**
   - Giao diện `LoginView.jsx` phân định rõ các trạng thái: Thẻ cảnh báo màu vàng khi còn lượt thử, Thẻ cảnh báo đỏ đậm khi bị khóa tạm thời kèm liên kết tắt *"Mở khóa tài khoản ngay qua chức năng Quên mật khẩu"*.
   - Chuyển đổi mượt mà giữa chế độ Đăng nhập $\leftrightarrow$ Nhận mã OTP $\leftrightarrow$ Đặt lại mật khẩu. Tự động điền mã OTP mẫu giúp thao tác kiểm thử trực quan và thuận tiện.
+
+
+---
+
+### [KI-20] Quản Trị Phân Quyền An Toàn: Nâng Quyền Vai Trò, Khóa/Mở Khóa Tức Thì và Đồng Bộ Hồ Sơ Liên Kết
+- **Bối cảnh nghiệp vụ:**
+  - Quản trị viên (Admin) cần giám sát và điều hành toàn bộ người dùng trong trung tâm: khóa tài khoản khi có nghi vấn bảo mật hoặc nghỉ việc/học, mở khóa ngay lập tức khi tài khoản bị khóa tạm thời do nhập sai quá 5 lần, nâng/hạ quyền vai trò (Role Elevation), và cấp lại mật khẩu an toàn.
+  - Vấn đề an toàn thông tin (Security & Privacy): Tuyệt đối không cho phép xem mật khẩu thô của người dùng (tuân thủ nguyên tắc Zero-Knowledge, tiêu chuẩn NIST SP 800-63B và OWASP). Mật khẩu chỉ được phép băm một chiều an toàn bằng Bcrypt; việc hỗ trợ người dùng quên mật khẩu được giải quyết qua tính năng **Admin Reset Password**.
+- **Giải pháp Kiến trúc Backend (RBAC & Profile Synchronization):**
+  1. *Phân quyền Nghiêm ngặt (Strict Admin-Only RBAC):*
+     - Endpoint `PATCH /api/v1/accounts/{user_id}/role`: Chỉ có `RoleEnum.ADMIN` mới có quyền thực thi. Nhân viên học vụ hay bất kỳ ai khác cố tình gọi API sẽ bị từ chối với lỗi `HTTP 403 Forbidden`.
+     - Endpoint `PATCH /api/v1/accounts/{user_id}/toggle-lock`: Admin có quyền đảo trạng thái tài khoản. Nếu đang bị khóa (bởi Admin hoặc do nhập sai 5 lần), hệ thống tự động reset `is_active = True`, `locked_until = None`, `failed_login_attempts = 0`. Nếu đang hoạt động, hệ thống khóa lại `is_active = False`.
+     - Ngăn ngừa lỗi vận hành nghiêm trọng: Admin không thể tự khóa tài khoản của chính mình và không thể tự hạ quyền nếu mình là Quản trị viên duy nhất trong hệ thống.
+  2. *Đồng bộ Hồ sơ Liên kết Tự động (Automatic Profile Synchronization):*
+     - Trong mô hình dữ liệu quan hệ, bảng `teachers` và `students` có khóa ngoại trỏ tới `users.id`.
+     - Khi nâng quyền hoặc chuyển đổi vai trò sang `TEACHER` hoặc `STUDENT`, hệ thống tự động kiểm tra và khởi tạo bản ghi `Teacher` profile (mã `GV...`) hoặc `Student` profile (mã `HV...`) nếu chưa có, ngăn chặn triệt để lỗi ngoại lệ khóa ngoại (`ForeignKeyViolation`) khi lớp học hoặc sổ điểm tham chiếu tới người dùng này.
+  3. *Admin Cấp lại Mật khẩu (Admin Reset Password):*
+     - Endpoint `POST /api/v1/accounts/{user_id}/reset-password`: Cho phép Admin đặt mật khẩu mới (tối thiểu 6 ký tự) cho người dùng gặp sự cố. Hệ thống băm Bcrypt mật khẩu mới và tự động mở khóa tài khoản.
+- **Trải nghiệm Giao diện Quản trị (`AccountsView.jsx`):**
+  - Bổ sung 4 thẻ KPI thống kê tức thì: Tổng tài khoản, Đang hoạt động, Đang bị khóa/tạm dừng, Số lượng Quản trị & Học vụ.
+  - Bộ lọc kép đa chiều: Lọc tìm kiếm theo từ khóa + Lọc theo Vai trò + Lọc theo Trạng thái (Hoạt động / Bị khóa).
+  - Modal Nâng quyền vai trò trực quan với mô tả trách nhiệm rõ ràng cho từng vai trò (`ADMIN`, `ACADEMIC_STAFF`, `TEACHER`, `STUDENT`, `PARENT`).
+  - Modal Cấp lại mật khẩu tích hợp bộ sinh mật khẩu ngẫu nhiên an toàn một chạm và nút sao chép Clipboard.

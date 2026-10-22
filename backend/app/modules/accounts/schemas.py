@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Optional, List
 from pydantic import BaseModel, EmailStr
 from app.core.permissions import RoleEnum
@@ -16,6 +17,12 @@ class UserUpdate(BaseModel):
     phone: Optional[str] = None
     is_active: Optional[bool] = None
 
+class RoleUpdateRequest(BaseModel):
+    role: RoleEnum
+
+class AdminResetPasswordRequest(BaseModel):
+    new_password: str
+
 class ChangePasswordRequest(BaseModel):
     old_password: str
     new_password: str
@@ -28,7 +35,10 @@ class UserResponse(BaseModel):
     role: RoleEnum
     phone: Optional[str] = None
     is_active: bool
+    failed_login_attempts: int = 0
+    locked_until: Optional[datetime] = None
+    is_locked: bool = False
+    created_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
-

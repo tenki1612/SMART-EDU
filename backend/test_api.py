@@ -2,7 +2,7 @@ import sys
 import time
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 from fastapi.testclient import TestClient
 from app.main import app
 
@@ -280,6 +280,72 @@ def run_tests():
     assert success_login.status_code == 200
     assert "access_token" in success_login.json()["data"]
     print("✓ 12.6. Login with New Password after Reset: PASSED")
+
+    # ================= 13. ADMIN ROLE ELEVATION & ACCOUNT LOCKING RBAC =================
+    # Create a fresh target account for testing admin controls
+    managed_user_name = f"user_manage_{int(datetime.now().timestamp())}"
+    create_target = client.post("/api/v1/accounts/", json={
+        "username": managed_user_name,
+        "email": f"{managed_user_name}@center.edu.vn",
+        "full_name": "Nguyễn Quản Trị Mục Tiêu",
+        "password": "TargetPassword123",
+        "role": "STUDENT",
+        "phone": "0988776655"
+    }, headers=headers)
+    assert create_target.status_code == 200
+    managed_user_id = create_target.json()["data"]["id"]
+
+    # 13.1. Admin promotes user from STUDENT to TEACHER
+    promote_res = client.patch(f"/api/v1/accounts/{managed_user_id}/role", json={
+        "role": "TEACHER"
+    }, headers=headers)
+    assert promote_res.status_code == 200
+    assert promote_res.json()["data"]["role"] == "TEACHER"
+    print("✓ 13.1. Admin Role Elevation (STUDENT -> TEACHER): PASSED")
+
+    # 13.2. Academic Staff cannot promote role (Strict 403 Forbidden)
+    staff_promote_res = client.patch(f"/api/v1/accounts/{managed_user_id}/role", json={
+        "role": "ADMIN"
+    }, headers=staff_headers)
+    assert staff_promote_res.status_code == 403
+    print("✓ 13.2. Academic Staff Forbidden from Role Elevation: PASSED (403 Forbidden)")
+
+    # 13.3. Admin Locks the Account
+    lock_res = client.patch(f"/api/v1/accounts/{managed_user_id}/toggle-lock", headers=headers)
+    assert lock_res.status_code == 200
+    assert lock_res.json()["data"]["is_active"] is False
+    print("✓ 13.3. Admin Locks Account via Toggle Lock: PASSED")
+
+    # 13.4. Locked User Cannot Login
+    locked_user_login = client.post("/api/v1/auth/login", json={
+        "username": managed_user_name,
+        "password": "TargetPassword123"
+    })
+    assert locked_user_login.status_code == 400
+    assert "khóa" in locked_user_login.json()["detail"].lower() or "vô hiệu hóa" in locked_user_login.json()["detail"].lower()
+    print("✓ 13.4. Locked Account Login Denied: PASSED")
+
+    # 13.5. Admin Unlocks the Account
+    unlock_res = client.patch(f"/api/v1/accounts/{managed_user_id}/toggle-lock", headers=headers)
+    assert unlock_res.status_code == 200
+    assert unlock_res.json()["data"]["is_active"] is True
+    print("✓ 13.5. Admin Unlocks Account via Toggle Lock: PASSED")
+
+    # 13.6. Admin Resets User Password
+    admin_reset_res = client.post(f"/api/v1/accounts/{managed_user_id}/reset-password", json={
+        "new_password": "AdminAssignedPass999!"
+    }, headers=headers)
+    assert admin_reset_res.status_code == 200
+    print("✓ 13.6. Admin Password Reset: PASSED")
+
+    # 13.7. User Logs In with Admin-Reset Password
+    admin_reset_login = client.post("/api/v1/auth/login", json={
+        "username": managed_user_name,
+        "password": "AdminAssignedPass999!"
+    })
+    assert admin_reset_login.status_code == 200
+    assert "access_token" in admin_reset_login.json()["data"]
+    print("✓ 13.7. Login with Admin-Reset Password: PASSED")
 
     print("\n🎉 ALL BACKEND INTEGRATION TESTS PASSED (100% SUCCESS)!")
 
