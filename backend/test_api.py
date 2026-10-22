@@ -214,6 +214,73 @@ def run_tests():
     assert parent_unauth_ward.status_code in (403, 404)
     print("✓ 11.5. Parent Unauthorized Ward Access Blocked: PASSED (403/404)")
 
+    # 12. Security & Lockout: Failed Password Attempts (5 times) & Forgot/Reset Password
+    # 12.1 Create a temporary test account for lockout testing
+    test_user_name = f"locktest_{rand_suffix}"
+    create_test_user = client.post("/api/v1/accounts/", json={
+        "username": test_user_name,
+        "email": f"locktest_{rand_suffix}@smartedu.edu.vn",
+        "full_name": "Kiểm Thử Khóa Đăng Nhập",
+        "password": "Password123",
+        "role": "STUDENT"
+    }, headers=headers)
+    assert create_test_user.status_code == 200
+
+    # 12.2 Wrong password attempts 1 to 4 should return warning with remaining attempts
+    for attempt in range(1, 5):
+        bad_login = client.post("/api/v1/auth/login", json={
+            "username": test_user_name,
+            "password": "WrongPassword999"
+        })
+        assert bad_login.status_code == 400
+        assert "còn" in bad_login.json()["detail"].lower()
+    print("✓ 12.1. Failed Password Warning with Remaining Attempts (1-4): PASSED")
+
+    # 12.3 5th wrong password attempt should trigger temporary lockout
+    fifth_attempt = client.post("/api/v1/auth/login", json={
+        "username": test_user_name,
+        "password": "WrongPassword999"
+    })
+    assert fifth_attempt.status_code == 400
+    assert "khóa tạm thời" in fifth_attempt.json()["detail"].lower()
+    print("✓ 12.2. Account Temporary Lockout Triggered on 5th Attempt: PASSED")
+
+    # 12.4 Login with correct password while locked should be blocked
+    locked_attempt = client.post("/api/v1/auth/login", json={
+        "username": test_user_name,
+        "password": "Password123"
+    })
+    assert locked_attempt.status_code == 400
+    assert "khóa tạm thời" in locked_attempt.json()["detail"].lower()
+    print("✓ 12.3. Prevent Login While Account is Temporarily Locked: PASSED")
+
+    # 12.5 Request Forgot Password OTP
+    forgot_res = client.post("/api/v1/auth/forgot-password", json={
+        "identifier": test_user_name
+    })
+    assert forgot_res.status_code == 200
+    otp_code = forgot_res.json()["data"]["reset_code"]
+    assert len(otp_code) == 6
+    print(f"✓ 12.4. Forgot Password OTP Request: PASSED (OTP: {otp_code})")
+
+    # 12.6 Reset Password with OTP & Unlock Account
+    reset_res = client.post("/api/v1/auth/reset-password", json={
+        "identifier": test_user_name,
+        "reset_code": otp_code,
+        "new_password": "NewSecretPassword888"
+    })
+    assert reset_res.status_code == 200
+    print("✓ 12.5. Reset Password & Unlock Account with OTP: PASSED")
+
+    # 12.7 Login with newly reset password succeeds
+    success_login = client.post("/api/v1/auth/login", json={
+        "username": test_user_name,
+        "password": "NewSecretPassword888"
+    })
+    assert success_login.status_code == 200
+    assert "access_token" in success_login.json()["data"]
+    print("✓ 12.6. Login with New Password after Reset: PASSED")
+
     print("\n🎉 ALL BACKEND INTEGRATION TESTS PASSED (100% SUCCESS)!")
 
 if __name__ == "__main__":

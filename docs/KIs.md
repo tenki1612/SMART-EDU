@@ -25,6 +25,7 @@ Tài liệu này lưu trữ các **Knowledge Items (KIs)** — các bài học k
 - **KI-16:** Phân Quyền Sổ Điểm Nghiêm Ngặt (Strict Grade Mutation RBAC & Separation of Concerns)
 - **KI-17:** Cô Lập Dữ Liệu Điểm Số Cá Nhân & Giám Hộ (Data Privacy Isolation for Student & Parent)
 - **KI-18:** Thiết Kế Bảng Điều Khiển Chuyên Biệt Theo Vai Trò (Role-Tailored Dashboards Architecture)
+- **KI-19:** Phòng Vệ Chống Tấn Công Dò Mật Khẩu (Brute-force Lockout) & Khôi Phục Mật Khẩu Bằng Mã OTP
 
 ---
 
@@ -303,3 +304,32 @@ Tài liệu này lưu trữ các **Knowledge Items (KIs)** — các bài học k
      - Thẻ hồ sơ con em được giám hộ: Mã học viên, Tên, Ngày sinh, Khóa học đang học, Trạng thái.
      - Danh sách các môn con đang học kèm điểm số và kết quả (Đạt/Chưa đạt).
      - Nút xem chi tiết bảng điểm và đăng ký khóa học tiếp theo cho con.
+
+
+---
+
+### [KI-19] Phòng Vệ Chống Tấn Công Dò Mật Khẩu (Brute-force Lockout) & Khôi Phục Mật Khẩu Bằng Mã OTP
+- **Bối cảnh nghiệp vụ:**
+  - Hệ thống đào tạo lưu trữ dữ liệu nhạy cảm của học viên, điểm số và thông tin cá nhân của phụ huynh, giáo viên.
+  - Nguy cơ: Kẻ tấn công hoặc người dùng thử dò mật khẩu tài khoản liên tục (Brute-force attack).
+  - Yêu cầu: Hiển thị cảnh báo số lần thử còn lại khi nhập sai mật khẩu; nếu nhập sai quá 5 lần thì tài khoản phải bị khóa tạm thời trong 15 phút. Người dùng có thể sử dụng chức năng Quên mật khẩu để khôi phục quyền truy cập ngay lập tức.
+- **Giải pháp Kiến trúc Bảo mật (Backend Architecture):**
+  1. *Schema mở rộng trên bảng `users`:*
+     - `failed_login_attempts`: Lưu số lần đăng nhập thất bại liên tiếp (mặc định 0).
+     - `locked_until`: Thời điểm kết thúc khóa tài khoản (DateTime, mặc định `None`).
+     - `reset_token`: Mã OTP khôi phục mật khẩu (6 chữ số).
+     - `reset_token_expires_at`: Thời hạn hiệu lực của mã OTP (15 phút).
+  2. *Quy trình Xác thực & Khóa đăng nhập (`AuthService.authenticate_user`):*
+     - Bước 1: Kiểm tra `user.locked_until`. Nếu thời điểm hiện tại `< user.locked_until`: Từ chối đăng nhập với thông báo: *"Tài khoản của bạn đã bị khóa tạm thời do nhập sai mật khẩu quá 5 lần. Vui lòng thử lại sau X phút hoặc sử dụng chức năng 'Quên mật khẩu' để khôi phục."*
+     - Bước 2: Nếu thời gian khóa đã trôi qua, tự động reset `failed_login_attempts = 0` và `locked_until = None`.
+     - Bước 3: So khớp mật khẩu qua Bcrypt. Nếu sai:
+       - Tăng `failed_login_attempts += 1`.
+       - Nếu `failed_login_attempts < 5`: Trả về `400 Bad Request` kèm thông báo: *"Mật khẩu không chính xác. Bạn còn {5 - attempts} lần thử trước khi tài khoản bị khóa tạm thời."*
+       - Nếu `failed_login_attempts >= 5`: Thiết lập `locked_until = now + 15 phút`, phản hồi cảnh báo khóa tài khoản.
+     - Bước 4: Khi đăng nhập thành công với mật khẩu đúng, reset ngay `failed_login_attempts = 0` và xóa `locked_until`.
+  3. *Quy trình Khôi phục Mật khẩu Hai Bước (2-Step OTP Password Reset):*
+     - **Bước 1 (`POST /auth/forgot-password`):** Người dùng nhập username hoặc email. Hệ thống sinh mã OTP 6 chữ số ngẫu nhiên an toàn qua `secrets.randbelow()`, lưu vào `reset_token` kèm thời hạn 15 phút.
+     - **Bước 2 (`POST /auth/reset-password`):** Người dùng nhập `identifier`, `reset_code` và `new_password` (tối thiểu 6 ký tự). Hệ thống kiểm tra tính hợp lệ và thời hạn của OTP, cập nhật hash mật khẩu mới, đồng thời tự động xóa trạng thái khóa tài khoản (`failed_login_attempts = 0`, `locked_until = None`), cho phép đăng nhập ngay.
+- **Trải nghiệm Người dùng (Frontend UI/UX):**
+  - Giao diện `LoginView.jsx` phân định rõ các trạng thái: Thẻ cảnh báo màu vàng khi còn lượt thử, Thẻ cảnh báo đỏ đậm khi bị khóa tạm thời kèm liên kết tắt *"Mở khóa tài khoản ngay qua chức năng Quên mật khẩu"*.
+  - Chuyển đổi mượt mà giữa chế độ Đăng nhập $\leftrightarrow$ Nhận mã OTP $\leftrightarrow$ Đặt lại mật khẩu. Tự động điền mã OTP mẫu giúp thao tác kiểm thử trực quan và thuận tiện.

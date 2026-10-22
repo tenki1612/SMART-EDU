@@ -10,6 +10,26 @@ from app.api.v1.api import api_router
 # Auto-create tables on launch if not exists
 Base.metadata.create_all(bind=engine)
 
+def ensure_schema():
+    """Ensure newly added columns exist in SQLite database"""
+    with engine.connect() as conn:
+        try:
+            res = conn.exec_driver_sql("PRAGMA table_info(users)").fetchall()
+            existing_cols = {row[1] for row in res}
+            if "failed_login_attempts" not in existing_cols:
+                conn.exec_driver_sql("ALTER TABLE users ADD COLUMN failed_login_attempts INTEGER DEFAULT 0 NOT NULL")
+            if "locked_until" not in existing_cols:
+                conn.exec_driver_sql("ALTER TABLE users ADD COLUMN locked_until DATETIME")
+            if "reset_token" not in existing_cols:
+                conn.exec_driver_sql("ALTER TABLE users ADD COLUMN reset_token VARCHAR(100)")
+            if "reset_token_expires_at" not in existing_cols:
+                conn.exec_driver_sql("ALTER TABLE users ADD COLUMN reset_token_expires_at DATETIME")
+            conn.commit()
+        except Exception:
+            pass
+
+ensure_schema()
+
 app = FastAPI(
     title=settings.PROJECT_NAME,
     description="Hệ thống Web Quản lý Trung tâm Ngoại ngữ - Kiến trúc Modular Monolith chuẩn công nghiệp với 82 chức năng nghiệp vụ.",
@@ -58,4 +78,3 @@ def health_check():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
-

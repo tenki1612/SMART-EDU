@@ -38,6 +38,14 @@ export const authApi = {
         const res = await apiClient.get('/auth/roles-permissions');
         return res.data;
     },
+    forgotPassword: async (identifier) => {
+        const res = await apiClient.post('/auth/forgot-password', { identifier });
+        return res.data;
+    },
+    resetPassword: async (identifier, reset_code, new_password) => {
+        const res = await apiClient.post('/auth/reset-password', { identifier, reset_code, new_password });
+        return res.data;
+    },
 };
 
 // 2. Accounts API

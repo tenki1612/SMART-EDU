@@ -4,7 +4,11 @@ from app.core.database import get_db
 from app.core.permissions import get_current_user_payload
 from app.common.response import ApiResponse
 from app.modules.accounts.models import User
-from app.modules.auth.schemas import LoginRequest, TokenResponse, UserInfoResponse
+from app.modules.auth.schemas import (
+    LoginRequest, TokenResponse, UserInfoResponse,
+    ForgotPasswordRequest, ForgotPasswordResponse,
+    ResetPasswordRequest, ResetPasswordResponse
+)
 from app.modules.auth.service import AuthService
 
 router = APIRouter()
@@ -34,3 +38,12 @@ def get_roles_permissions(payload: dict = Depends(get_current_user_payload)):
     ]
     return ApiResponse(data=matrix, message="Danh sách phân quyền theo vai trò")
 
+@router.post("/forgot-password", response_model=ApiResponse[ForgotPasswordResponse], summary="Yêu cầu mã khôi phục mật khẩu OTP")
+def forgot_password(req: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    res = AuthService.forgot_password(db, req)
+    return ApiResponse(data=res, message=res.message)
+
+@router.post("/reset-password", response_model=ApiResponse[ResetPasswordResponse], summary="Đặt lại mật khẩu với mã OTP")
+def reset_password(req: ResetPasswordRequest, db: Session = Depends(get_db)):
+    res = AuthService.reset_password(db, req)
+    return ApiResponse(data=res, message=res.message)

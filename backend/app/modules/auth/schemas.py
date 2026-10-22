@@ -26,3 +26,20 @@ class UserInfoResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class ForgotPasswordRequest(BaseModel):
+    identifier: str # Username hoặc Email
+
+class ForgotPasswordResponse(BaseModel):
+    identifier: str
+    reset_code: str
+    expires_in_minutes: int = 15
+    message: str
+
+class ResetPasswordRequest(BaseModel):
+    identifier: str
+    reset_code: str
+    new_password: str
+
+class ResetPasswordResponse(BaseModel):
+    success: bool = True
+    message: str
