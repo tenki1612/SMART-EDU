@@ -148,7 +148,7 @@ Tài liệu này lưu trữ các **Knowledge Items (KIs)** — các bài học k
   1. *Loại bỏ hoàn toàn tính năng bypass xác thực:* Gỡ bỏ `quickLogin()` khỏi `AuthContext`, xóa các nút đổi vai trò tự động trên Navbar và Login View.
   2. *Bắt buộc xác thực 2 yếu tố đầu vào:* Người dùng (kể cả Admin, Giáo viên, Học vụ, Học viên, Phụ huynh) đều phải nhập đúng `username` và `password`.
   3. *Mã hóa một chiều an toàn:* Mật khẩu được băm bằng thuật toán `bcrypt` (`passlib.context.CryptContext(schemes=["bcrypt"], deprecated="auto")`), không lưu plaintext trong database.
-  4. *Hỗ trợ trải nghiệm người dùng (UX):* Trên màn hình đăng nhập cung cấp danh sách tài khoản mẫu để người dùng bấm vào thì hệ thống **tự động điền (pre-fill)** `username` và `password` vào form, sau đó người dùng vẫn phải bấm **"Đăng nhập vào hệ thống"** để gửi request xác thực qua Backend API.
+  4. *Chuẩn hóa màn hình đăng nhập Production:* Form đăng nhập khởi tạo ở trạng thái trống (`username = ''`, `password = ''`), loại bỏ các nút phím tắt đăng nhập mẫu để đảm bảo người dùng nhập đúng thông tin tài khoản thật, bảo đảm an ninh và phản ánh trung thực quy trình xác thực.
 
 ---
 

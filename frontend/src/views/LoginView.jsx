@@ -11,8 +11,8 @@ export const LoginView = () => {
   const { login, isLoading } = useAuth();
   
   // Login form state
-  const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('admin123');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -26,21 +26,6 @@ export const LoginView = () => {
   const [forgotError, setForgotError] = useState('');
   const [isForgotLoading, setIsForgotLoading] = useState(false);
   const [generatedOtp, setGeneratedOtp] = useState('');
-
-  // Quick Demo Accounts for reviewer convenience
-  const demoAccounts = [
-    { label: 'Quản trị viên', user: 'admin', pass: 'admin123', color: 'border-rose-300 text-rose-700 bg-rose-50' },
-    { label: 'Nhân viên học vụ', user: 'staff', pass: 'staff123', color: 'border-purple-300 text-purple-700 bg-purple-50' },
-    { label: 'Giảng viên', user: 'teacher', pass: 'teacher123', color: 'border-sky-300 text-sky-700 bg-sky-50' },
-    { label: 'Học viên', user: 'student', pass: 'student123', color: 'border-emerald-300 text-emerald-700 bg-emerald-50' },
-    { label: 'Phụ huynh', user: 'parent', pass: 'parent123', color: 'border-amber-300 text-amber-800 bg-amber-50' },
-  ];
-
-  const handleQuickFill = (acc) => {
-    setUsername(acc.user);
-    setPassword(acc.pass);
-    setErrorMsg('');
-  };
 
   // Handle standard login
   const handleSubmit = async (e) => {
@@ -178,37 +163,18 @@ export const LoginView = () => {
             </div>
           </div>
 
-          {/* RIGHT COLUMN: LOGIN FORM & QUICK DEMO (7 Cols) */}
+          {/* RIGHT COLUMN: LOGIN FORM (7 Cols) */}
           <div className="lg:col-span-7 bg-white p-8 sm:p-12 flex flex-col justify-between">
             
             {/* MODE 1: LOGIN FORM */}
             {authMode === 'login' && (
               <div>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between mb-6">
                   <div>
                     <h2 className="text-2xl font-black text-slate-900 tracking-tight">Đăng nhập tài khoản</h2>
                     <p className="text-xs text-slate-500 mt-1">
                       Nhập thông tin xác thực để truy cập bảng điều khiển hệ thống
                     </p>
-                  </div>
-                </div>
-
-                {/* Quick Account Switcher (For Demo & Fast Evaluation) */}
-                <div className="mt-5 pt-4 pb-3 border-t border-b border-slate-100">
-                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-2">
-                    ⚡ Đăng nhập nhanh tài khoản mẫu:
-                  </span>
-                  <div className="flex flex-wrap gap-2">
-                    {demoAccounts.map((acc, i) => (
-                      <button
-                        key={i}
-                        type="button"
-                        onClick={() => handleQuickFill(acc)}
-                        className={`px-2.5 py-1 rounded-xl text-[11px] font-bold border transition cursor-pointer active:scale-95 hover:shadow-xs ${acc.color}`}
-                      >
-                        {acc.label}
-                      </button>
-                    ))}
                   </div>
                 </div>
 
