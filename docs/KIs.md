@@ -30,6 +30,8 @@ Tài liệu này lưu trữ các **Knowledge Items (KIs)** — các bài học k
 - **KI-21:** Phân Loại Phản Hồi Lỗi Xác Thực Đa Tầng & Cơ Chế Tự Đăng Ký Tài Khoản (Self-Registration)
 - **KI-22:** Kiến Trúc Quản Lý Ảnh Đại Diện & Đồng Bộ Hồ Sơ Người Dùng Đa Phân Hệ (Avatar & Profile Management)
 - **KI-23:** Kiến Trúc Cuộn Độc Lập (Independent Dual-Scroll Shell) & Giải Quyết Bẫy CSS backdrop-filter Với React Portal
+- **KI-24:** Ngăn Chặn Hiện Tượng Unmount Mất Dữ Liệu Form Do Trạng Thái Loading Toàn Cục (Authentication Loading vs Form Submission State)
+- **KI-25:** Thiết Kế Bảng Dữ Liệu Chuẩn SaaS (SaaS-Grade Ledger UI Pattern) & Phòng Tránh Bẫy Runtime Missing Icon Imports
 
 ---
 
@@ -370,16 +372,11 @@ Tài liệu này lưu trữ các **Knowledge Items (KIs)** — các bài học k
   - Người dùng mới (Học viên, Phụ huynh) cần có khả năng tự đăng ký tài khoản tham gia học tập mà không cần chờ Admin tạo thủ công.
 - **Giải pháp Kiến trúc Backend (Detailed Authentication Error Differentiation):**
   1. *Quy trình Kiểm tra 5 Tầng Phân Biệt (`AuthService.authenticate_user`):*
-     - **Tầng 1 (Tồn tại):** Tìm tài khoản theo username hoặc email trong toàn bộ cơ sở dữ liệu (kể cả bản ghi `is_deleted`). Nếu không tìm thấy $
-ightarrow$ Báo lỗi *"Tài khoản không tồn tại trong hệ thống. Vui lòng kiểm tra lại thông tin hoặc đăng ký tài khoản mới."*
-     - **Tầng 2 (Đã xóa):** Nếu `user.is_deleted == True` $
-ightarrow$ Báo lỗi *"Tài khoản này đã bị xóa khỏi hệ thống. Vui lòng liên hệ ban quản trị để được hỗ trợ."*
-     - **Tầng 3 (Khóa bởi Admin):** Nếu `user.is_active == False` $
-ightarrow$ Báo lỗi *"Tài khoản của bạn đã bị Quản trị viên khóa hoặc vô hiệu hóa. Vui lòng liên hệ ban quản trị để được hỗ trợ."*
-     - **Tầng 4 (Khóa tạm thời 15p):** Nếu `user.locked_until > now` $
-ightarrow$ Báo lỗi *"Tài khoản của bạn đã bị khóa tạm thời do nhập sai mật khẩu quá 5 lần. Vui lòng thử lại sau X phút..."*
-     - **Tầng 5 (Sai mật khẩu):** So khớp Bcrypt. Nếu sai $
-ightarrow$ Tăng số lần sai và báo lỗi *"Mật khẩu không chính xác. Bạn còn {5 - attempts} lần thử trước khi tài khoản bị khóa tạm thời."*
+     - **Tầng 1 (Tồn tại):** Tìm tài khoản theo username hoặc email trong toàn bộ cơ sở dữ liệu (kể cả bản ghi `is_deleted`). Nếu không tìm thấy $\rightarrow$ Báo lỗi *"Tài khoản không tồn tại trong hệ thống. Vui lòng kiểm tra lại thông tin hoặc đăng ký tài khoản mới."*
+     - **Tầng 2 (Đã xóa):** Nếu `user.is_deleted == True` $\rightarrow$ Báo lỗi *"Tài khoản này đã bị xóa khỏi hệ thống. Vui lòng liên hệ ban quản trị để được hỗ trợ."*
+     - **Tầng 3 (Khóa bởi Admin):** Nếu `user.is_active == False` $\rightarrow$ Báo lỗi *"Tài khoản của bạn đã bị Quản trị viên khóa hoặc vô hiệu hóa. Vui lòng liên hệ ban quản trị để được hỗ trợ."*
+     - **Tầng 4 (Khóa tạm thời 15p):** Nếu `user.locked_until > now` $\rightarrow$ Báo lỗi *"Tài khoản của bạn đã bị khóa tạm thời do nhập sai mật khẩu quá 5 lần. Vui lòng thử lại sau X phút..."*
+     - **Tầng 5 (Sai mật khẩu):** So khớp Bcrypt. Nếu sai $\rightarrow$ Tăng số lần sai và báo lỗi *"Mật khẩu không chính xác. Bạn còn {5 - attempts} lần thử trước khi tài khoản bị khóa tạm thời."*
   2. *Quy trình Tự Đăng Ký Tài Khoản (`POST /api/v1/auth/register`):*
      - Cho phép tự đăng ký với vai trò `STUDENT` hoặc `PARENT`.
      - Tự động chuẩn hóa `username` và `email` (lowercase, trim).
@@ -459,3 +456,57 @@ ightarrow$ Tăng số lần sai và báo lỗi *"Mật khẩu không chính xác
   - **Lưu ý cốt lõi:**
     + Trong Flexbox, khi muốn một flex-item cuộn bằng `overflow-y-auto`, bắt buộc phải đặt `min-h-0` trên các container cha trung gian, nếu không flex-item sẽ tự động nở chiều cao theo nội dung con thay vì co lại và kích hoạt thanh cuộn.
     + Áp dụng lớp tùy chỉnh `.dark-scrollbar` cho sidebar tông tối và `custom-scrollbar` cho vùng nội dung sáng, giúp trải nghiệm cuộn liền mạch và thẩm mỹ cao.
+
+
+---
+
+### [KI-24] Ngăn Chặn Hiện Tượng Unmount Mất Dữ Liệu Form Do Trạng Thái Loading Toàn Cục (Authentication Loading vs Form Submission State)
+- **Bối cảnh nghiệp vụ:**
+  - Khi người dùng đăng nhập sai thông tin (nhập sai mật khẩu, tài khoản bị tạm khóa, tài khoản không tồn tại hoặc đã bị xóa), họ gặp hiện tượng: màn hình chớp tắt ("Đang khởi tạo phiên làm việc..."), sau đó form đăng nhập bị làm mới hoàn toàn về trạng thái rỗng và không xuất hiện bất kỳ thông báo lỗi nào.
+- **Nguyên nhân cốt lõi (The Premature Unmount Gotcha):**
+  - Trong `AuthContext.jsx`, hàm `login()` đặt `setIsLoading(true)` ở đầu hàm và `finally { setIsLoading(false) }`.
+  - Trong khi đó, component gốc `App.jsx` kiểm soát hiển thị phiên làm việc bằng điều kiện:
+    ```jsx
+    if (isLoading) {
+      return <LoadingSpinner text="Đang khởi tạo phiên làm việc..." />;
+    }
+    if (!token || !user) {
+      return <LoginView />;
+    }
+    ```
+  - **Chuỗi sự kiện gây lỗi:**
+    1. Người dùng bấm nút "Đăng nhập" $\rightarrow$ `login()` gọi `setIsLoading(true)`.
+    2. `App.jsx` re-render và hiển thị `<LoadingSpinner />`, lập tức **unmount hoàn toàn `<LoginView />` ra khỏi DOM**. Toàn bộ state nội bộ của form (`username`, `password`, `errorMsg`) bị hủy bỏ vĩnh viễn.
+    3. Khi API trả về lỗi (400 Bad Request, 401 Unauthorized, 403 Forbidden), `finally { setIsLoading(false) }` chạy $\rightarrow$ `App.jsx` re-render lại.
+    4. Vì `token` và `user` đều null, `App.jsx` mount một instance `<LoginView />` hoàn toàn mới từ đầu với giá trị khởi tạo rỗng.
+    5. Người dùng chỉ nhìn thấy màn hình chớp nháy và quay về form trắng tinh, hoàn toàn không biết lý do vì sao đăng nhập không thành công.
+- **Giải pháp Kiến trúc Chuẩn:**
+  1. *Tách biệt rạch ròi 2 trạng thái Loading:*
+     - **Session Initialization Loading (`isLoading` trong `AuthContext`):** Chỉ chạy duy nhất 1 lần khi ứng dụng khởi động để kiểm tra và phục hồi JWT token có sẵn từ `localStorage`.
+     - **Form Action Submitting State (`isLoggingIn` trong `LoginView`):** Quản lý cục bộ ngay tại component form. Nút bấm chuyển sang trạng thái xoay icon `RefreshCw` và text *"Đang xác thực thông tin..."*, tuyệt đối không kích hoạt `isLoading` toàn cục làm unmount trang.
+  2. *Bảo toàn Input & Phản hồi Kép (Dual Feedback UX):*
+     - Giữ nguyên `username` trên ô nhập liệu khi sai mật khẩu để người dùng không phải gõ lại từ đầu.
+     - Hiển thị song song: Thẻ cảnh báo trực quan có icon và phân loại màu sắc chuyên biệt (vàng cam cho sai mật khẩu kèm số lần thử còn lại, đỏ gạch cho tài khoản bị khóa/xóa/không tồn tại) + Kích hoạt thông báo Toast nổi góc trên màn hình qua `useToast()`.
+
+---
+
+### [KI-25] Thiết Kế Bảng Dữ Liệu Chuẩn SaaS (SaaS-Grade Ledger UI Pattern) & Phòng Tránh Bẫy Runtime Missing Icon Imports
+- **Bối cảnh nghiệp vụ:**
+  - Hệ thống SMART-EDU LMS sở hữu 11 phân hệ đào tạo với khối lượng dữ liệu nghiệp vụ lớn (Khóa học, Lớp học, Phòng học, Đơn đăng ký, Thời khóa biểu ma trận, Hồ sơ học viên, Giảng viên, Sổ điểm).
+  - Giao diện cũ còn lẫn lộn các mã kỹ thuật nội bộ (`FR-50 đến FR-60`, `FR-52`, `FR-65`), thiếu cái nhìn tổng quan vĩ mô và trải nghiệm lọc tìm kiếm còn rườm rà.
+- **Mẫu Thiết kế SaaS 4 Trụ Cột (The 4-Pillar SaaS Ledger Pattern):**
+  1. *Hàng 4 Thẻ KPI Metrics Đỉnh Trang (Macro Metric Cards):*
+     - Luôn bố trí lưới 4 thẻ thông số ở đầu mỗi phân hệ (Tổng số lượng, Đang hoạt động, Sắp tới / Lịch sử, Đã duyệt chính thức).
+     - Định dạng chữ số bằng thuộc tính CSS `tabular-nums` để các con số có cùng chiều rộng ký tự, ngăn chặn hiện tượng nhảy/giật layout khi số liệu thay đổi real-time.
+  2. *Thanh Chip Lọc Nhanh Kèm Badge Đếm Thời Gian Thực (Quick Filter Chips with Live Badges):*
+     - Thay vì bắt người dùng mở dropdown chọn rồi bấm lọc, cung cấp dãy chip 1 chạm nằm ngang (`Tất cả`, `IELTS Master`, `TOEIC & Giao tiếp`...) kèm con số bản ghi thực tế được tính toán tức thì qua `useMemo`.
+  3. *Trừu tượng hóa Mã Kỹ Thuật (Tech Code Abstraction):*
+     - Toàn bộ các chuỗi thô kỹ thuật nội bộ (như `FR-xx`) được chuyển đổi thành ngôn ngữ nghiệp vụ trực quan ("Công cụ phát hiện xung đột lịch thông minh thời gian thực", "Xét duyệt ghi danh học viên", v.v.).
+  4. *Đồng bộ Nhận diện Ảnh đại diện (`UserAvatar` Component):*
+     - Tích hợp component `UserAvatar` đồng nhất trên toàn bộ các bảng dữ liệu, danh sách và tiêu đề modal, loại bỏ hoàn toàn các khối div chữ cái thô sơ trước đây.
+- **Bẫy Kỹ thuật Gotcha (Missing Icon Imports in JSX):**
+  - **Hiện tượng:** Trong `GradesView.jsx`, khi bổ sung thẻ KPI sĩ số gọi `<Users className="w-5 h-5" />`, nếu quên khai báo `import { Users } from 'lucide-react'`, công cụ build Vite/Rollup có thể biến đổi module thành công nếu chỉ phân tích cú pháp tĩnh JSX.
+  - **Hệ quả lúc Runtime:** Khi người dùng mở phân hệ Sổ điểm, React render tới thẻ `<Users />` và lập tức quăng ngoại lệ JavaScript: `ReferenceError: Users is not defined`, làm crash toàn bộ giao diện của Admin, Học vụ và Giảng viên.
+  - **Bài học & Biện pháp phòng vệ:**
+    - Luôn chạy script kiểm tra đối chiếu tự động giữa toàn bộ JSX component tags trong mã nguồn và danh sách `imports` đã khai báo trước khi đẩy code lên môi trường chính thức.
+    - Bổ sung tùy chọn an toàn (Fallback Option) trong các thẻ `<select>` khi danh sách lớp hoặc phòng học rỗng (`-- Không có lớp học nào --`) để tránh lỗi render selector trống.
