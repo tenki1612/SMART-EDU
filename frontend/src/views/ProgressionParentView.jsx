@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { UserAvatar } from '../components/common/UserAvatar';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { progressionParentApi, studentsApi, coursesApi } from '../services/api';
@@ -141,11 +142,12 @@ export const ProgressionParentView = () => {
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <div className={`w-11 h-11 rounded-2xl flex items-center justify-center font-black text-sm shadow-xs ${
-                          isSelected ? 'bg-indigo-600 text-white' : 'bg-indigo-50 text-indigo-600'
-                        }`}>
-                          {w.full_name?.charAt(0) || 'C'}
-                        </div>
+                        <UserAvatar
+                          name={w.full_name}
+                          avatarUrl={w.avatar_url}
+                          size="md"
+                          className="rounded-2xl shrink-0 shadow-sm"
+                        />
                         <div>
                           <h4 className="font-black text-slate-900 text-sm">{w.full_name}</h4>
                           <p className="text-xs text-slate-500">

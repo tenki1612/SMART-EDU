@@ -32,51 +32,41 @@ export const AuthProvider = ({ children }) => {
     }, [token]);
 
     const login = async (username, password) => {
-        setIsLoading(true);
-        try {
-            const res = await authApi.login(username, password);
-            if (res.success && res.data) {
-                const { access_token, user_id, username: uName, full_name, role, avatar_url } = res.data;
-                localStorage.setItem('token', access_token);
-                setToken(access_token);
-                setUser({
-                    id: user_id,
-                    username: uName,
-                    email: `${uName}@center.edu.vn`,
-                    full_name,
-                    role,
-                    avatar_url: avatar_url || null,
-                    is_active: true,
-                });
-            }
-            return res;
-        } finally {
-            setIsLoading(false);
+        const res = await authApi.login(username, password);
+        if (res.success && res.data) {
+            const { access_token, user_id, username: uName, full_name, role, avatar_url } = res.data;
+            localStorage.setItem('token', access_token);
+            setToken(access_token);
+            setUser({
+                id: user_id,
+                username: uName,
+                email: `${uName}@center.edu.vn`,
+                full_name,
+                role,
+                avatar_url: avatar_url || null,
+                is_active: true,
+            });
         }
+        return res;
     };
 
     const register = async (userData) => {
-        setIsLoading(true);
-        try {
-            const res = await authApi.register(userData);
-            if (res.success && res.data) {
-                const { access_token, user_id, username: uName, full_name, role, avatar_url } = res.data;
-                localStorage.setItem('token', access_token);
-                setToken(access_token);
-                setUser({
-                    id: user_id,
-                    username: uName,
-                    email: userData.email,
-                    full_name,
-                    role,
-                    avatar_url: avatar_url || null,
-                    is_active: true,
-                });
-            }
-            return res;
-        } finally {
-            setIsLoading(false);
+        const res = await authApi.register(userData);
+        if (res.success && res.data) {
+            const { access_token, user_id, username: uName, full_name, role, avatar_url } = res.data;
+            localStorage.setItem('token', access_token);
+            setToken(access_token);
+            setUser({
+                id: user_id,
+                username: uName,
+                email: userData.email,
+                full_name,
+                role,
+                avatar_url: avatar_url || null,
+                is_active: true,
+            });
         }
+        return res;
     };
 
     const updateUserProfile = (updatedFields) => {

@@ -42,6 +42,7 @@ class ClassGradingSheetStudent(BaseModel):
     student_id: int
     student_code: str
     full_name: str
+    avatar_url: Optional[str] = None
     attendance_score: float
     midterm_score: float
     final_score: float

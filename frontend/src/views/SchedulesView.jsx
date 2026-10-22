@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { schedulesApi, classroomsApi, teachersApi, classesApi } from '../services/api';
 import {
-  CalendarDays, AlertTriangle, CheckCircle, Clock, MapPin, UserCheck,
+  CalendarDays, AlertTriangle, CheckCircle, CheckCircle2, Clock, MapPin, UserCheck, Calendar,
   ShieldCheck, Plus, Edit2, Trash2, ChevronLeft, ChevronRight,
   LayoutGrid, List, Ban, X, Filter, Sparkles
 } from 'lucide-react';
@@ -161,6 +162,10 @@ export const SchedulesView = () => {
   const pastCount = useMemo(() => {
     return schedules.filter(s => s.session_date < todayStr).length;
   }, [schedules, todayStr]);
+
+  const confirmedCount = useMemo(() => {
+    return schedules.filter(s => s.is_confirmed).length;
+  }, [schedules]);
 
   // Navigation handlers for week
   const handlePrevWeek = () => {
@@ -414,6 +419,49 @@ export const SchedulesView = () => {
             >
               <List className="w-3.5 h-3.5" /> Danh sách
             </button>
+          </div>
+        </div>
+      </div>
+
+      {/* KPI Metric Overview Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
+          <div>
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Tổng buổi học</span>
+            <span className="text-2xl font-black text-slate-900 mt-0.5 block tabular-nums">{schedules.length}</span>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600">
+            <CalendarDays className="w-5 h-5" />
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
+          <div>
+            <span className="text-[11px] font-bold text-indigo-600 uppercase tracking-wider block">Buổi học sắp tới</span>
+            <span className="text-2xl font-black text-indigo-700 mt-0.5 block tabular-nums">{upcomingCount}</span>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-200/60 flex items-center justify-center text-indigo-600">
+            <Clock className="w-5 h-5" />
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
+          <div>
+            <span className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider block">Đã duyệt chính thức</span>
+            <span className="text-2xl font-black text-emerald-700 mt-0.5 block tabular-nums">{confirmedCount}</span>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200/60 flex items-center justify-center text-emerald-600">
+            <CheckCircle2 className="w-5 h-5" />
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
+          <div>
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Lịch sử buổi học</span>
+            <span className="text-2xl font-black text-slate-700 mt-0.5 block tabular-nums">{pastCount}</span>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500">
+            <Calendar className="w-5 h-5" />
           </div>
         </div>
       </div>
@@ -805,12 +853,12 @@ export const SchedulesView = () => {
         </div>
       )}
 
-      {/* Live Conflict Checker Standalone Box (FR-65) */}
+      {/* Live Conflict Checker Standalone Box */}
       {canManage && (
         <div className="bg-gradient-to-br from-white to-indigo-50/30 rounded-3xl border border-indigo-100 p-6 shadow-2xs">
           <div className="flex items-center gap-2 text-indigo-900 font-extrabold text-sm mb-1.5">
             <ShieldCheck className="w-4 h-4 text-indigo-600" />
-            Công cụ phát hiện xung đột lịch thời gian thực (Thuật toán FR-65)
+            Công cụ phát hiện xung đột lịch thông minh thời gian thực
           </div>
           <p className="text-xs text-slate-500 mb-5 leading-relaxed">
             Hệ thống tự động rà soát va chạm thời gian giữa phòng học và giáo viên phụ trách để ngăn chặn xếp trùng lịch.
@@ -910,8 +958,8 @@ export const SchedulesView = () => {
       )}
 
       {/* Modal: Thêm buổi học mới */}
-      {showAddModal && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+      {showAddModal && createPortal(
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-7 shadow-2xl border border-slate-200">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
               <h3 className="text-lg font-black text-slate-900">
@@ -1059,12 +1107,13 @@ export const SchedulesView = () => {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Modal: Sửa buổi học */}
-      {showEditModal && editingSession && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+      {showEditModal && editingSession && createPortal(
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-7 shadow-2xl border border-slate-200">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
               <div>
@@ -1196,7 +1245,8 @@ export const SchedulesView = () => {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

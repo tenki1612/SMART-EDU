@@ -1,4 +1,6 @@
 import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { UserAvatar } from '../components/common/UserAvatar';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { gradesApi, classesApi, studentsApi, progressionParentApi } from '../services/api';
@@ -20,7 +22,8 @@ import {
   Sparkles,
   BookOpen,
   Calendar,
-  AlertTriangle
+  AlertTriangle,
+  Users
 } from 'lucide-react';
 
 export const GradesView = () => {
@@ -636,6 +639,57 @@ export const GradesView = () => {
         </div>
       )}
 
+      {/* KPI Metric Overview Cards for Grading Sheet */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
+          <div>
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Sĩ số bảng điểm</span>
+            <span className="text-2xl font-black text-slate-900 mt-0.5 block tabular-nums">{gradingSheet.length}</span>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600">
+            <Users className="w-5 h-5" />
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
+          <div>
+            <span className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider block">Đạt chuẩn (PASSED)</span>
+            <span className="text-2xl font-black text-emerald-700 mt-0.5 block tabular-nums">
+              {gradingSheet.filter((s) => s.result_status === 'PASSED').length}
+            </span>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200/60 flex items-center justify-center text-emerald-600">
+            <CheckCircle2 className="w-5 h-5" />
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
+          <div>
+            <span className="text-[11px] font-bold text-indigo-600 uppercase tracking-wider block">Điểm trung bình lớp</span>
+            <span className="text-2xl font-black text-indigo-700 mt-0.5 block tabular-nums">
+              {gradingSheet.length > 0
+                ? (gradingSheet.reduce((acc, curr) => acc + (Number(curr.total_score) || 0), 0) / gradingSheet.length).toFixed(2)
+                : '--'}
+            </span>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-200/60 flex items-center justify-center text-indigo-600">
+            <Award className="w-5 h-5" />
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
+          <div>
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Trạng thái sổ điểm</span>
+            <span className={`text-base font-black mt-1.5 block ${isSheetLocked ? 'text-amber-700' : 'text-emerald-700'}`}>
+              {isSheetLocked ? 'Đã khóa sổ' : 'Đang mở nhập'}
+            </span>
+          </div>
+          <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isSheetLocked ? 'bg-amber-50 text-amber-600 border border-amber-200/60' : 'bg-emerald-50 text-emerald-600 border border-emerald-200/60'}`}>
+            {isSheetLocked ? <Lock className="w-5 h-5" /> : <Unlock className="w-5 h-5" />}
+          </div>
+        </div>
+      </div>
+
       {/* Class Selector Bar */}
       <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-3">
         <div className="flex items-center gap-2 w-full sm:w-auto">
@@ -645,11 +699,15 @@ export const GradesView = () => {
             onChange={(e) => setSelectedClassId(Number(e.target.value))}
             className="border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-slate-800 bg-white font-bold outline-hidden hover:border-slate-300 cursor-pointer shadow-2xs"
           >
-            {classes.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.class_code} - {c.course_title} ({c.current_enrolled}/{c.max_capacity} HV)
-              </option>
-            ))}
+            {classes.length === 0 ? (
+              <option value="">-- Không có lớp học nào --</option>
+            ) : (
+              classes.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.class_code} - {c.course_title} ({c.current_enrolled}/{c.max_capacity} HV)
+                </option>
+              ))
+            )}
           </select>
         </div>
 
@@ -698,8 +756,18 @@ export const GradesView = () => {
                   <tr key={st.student_id} className="hover:bg-slate-50/80 transition-colors">
                     <td className="p-4 font-mono font-semibold text-slate-400">{idx + 1}</td>
                     <td className="p-4">
-                      <div className="font-bold text-slate-900">{st.full_name}</div>
-                      <div className="font-mono text-[11px] text-indigo-700">{st.student_code}</div>
+                      <div className="flex items-center gap-3">
+                        <UserAvatar
+                          name={st.full_name}
+                          avatarUrl={st.avatar_url}
+                          size="sm"
+                          className="rounded-xl shrink-0"
+                        />
+                        <div>
+                          <div className="font-bold text-slate-900 leading-tight">{st.full_name}</div>
+                          <div className="font-mono text-[11px] text-indigo-700 font-semibold">{st.student_code}</div>
+                        </div>
+                      </div>
                     </td>
 
                     {/* Điểm chuyên cần */}
@@ -804,8 +872,8 @@ export const GradesView = () => {
       </div>
 
       {/* Modal: Thêm học viên vào bảng điểm */}
-      {isAddModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+      {isAddModalOpen && createPortal(
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl border border-slate-200">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
               <h3 className="text-lg font-black text-slate-900">
@@ -907,7 +975,8 @@ export const GradesView = () => {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

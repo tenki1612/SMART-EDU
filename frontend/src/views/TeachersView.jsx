@@ -1,4 +1,6 @@
 import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { UserAvatar } from '../components/common/UserAvatar';
 import { teachersApi } from '../services/api';
 import { useToast } from '../context/ToastContext';
 import { 
@@ -12,6 +14,7 @@ export const TeachersView = () => {
   const [search, setSearch] = useState('');
   const [selectedSchedule, setSelectedSchedule] = useState(null);
   const [isLoadingSchedule, setIsLoadingSchedule] = useState(false);
+  const [specialtyFilter, setSpecialtyFilter] = useState('ALL');
 
   const loadTeachers = async () => {
     try {
@@ -41,6 +44,17 @@ export const TeachersView = () => {
 
   const totalTeachers = teachers.length;
   const activeTeachers = teachers.filter(t => t.status === 'ACTIVE' || !t.status).length;
+  const ieltsCount = teachers.filter(t => (t.specialty || '').toUpperCase().includes('IELTS')).length;
+  const toeicCount = teachers.filter(t => (t.specialty || '').toUpperCase().includes('TOEIC')).length;
+
+  const filteredTeachers = teachers.filter((t) => {
+    if (specialtyFilter === 'ALL') return true;
+    const spec = (t.specialty || '').toUpperCase();
+    if (specialtyFilter === 'IELTS') return spec.includes('IELTS');
+    if (specialtyFilter === 'TOEIC') return spec.includes('TOEIC');
+    if (specialtyFilter === 'COMMUNICATION') return spec.includes('GIAO TIẾP') || spec.includes('COMMUNICATION') || (!spec.includes('IELTS') && !spec.includes('TOEIC'));
+    return true;
+  });
 
   return (
     <div className="space-y-6">
@@ -107,27 +121,56 @@ export const TeachersView = () => {
         </div>
       </div>
 
-      {/* Search Input Bar */}
-      <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-xs flex items-center gap-3">
-        <Search className="w-4 h-4 text-slate-400 shrink-0 ml-1" />
-        <input
-          type="text"
-          placeholder="Tìm kiếm giảng viên theo mã (GV-...), họ tên, chuyên môn, bằng cấp..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full text-xs font-medium outline-hidden text-slate-800 placeholder:text-slate-400"
-        />
+      {/* Filter and Search Bar */}
+      <div className="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+        {/* Specialty Filter Chips */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0">
+          {[
+            { key: 'ALL', label: 'Tất cả', count: totalTeachers },
+            { key: 'IELTS', label: 'IELTS Master', count: ieltsCount },
+            { key: 'TOEIC', label: 'TOEIC & Giao tiếp', count: toeicCount },
+          ].map(f => (
+            <button
+              key={f.key}
+              onClick={() => setSpecialtyFilter(f.key)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
+                specialtyFilter === f.key
+                  ? 'bg-indigo-600 text-white shadow-xs'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200/70'
+              }`}
+            >
+              <span>{f.label}</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                specialtyFilter === f.key ? 'bg-indigo-700 text-white' : 'bg-slate-200 text-slate-700'
+              }`}>
+                {f.count}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {/* Search input */}
+        <div className="relative md:w-80">
+          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            placeholder="Tìm mã GV, họ tên, chuyên môn..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 outline-hidden text-xs font-medium transition"
+          />
+        </div>
       </div>
 
       {/* Teacher Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {teachers.length === 0 ? (
+        {filteredTeachers.length === 0 ? (
           <div className="col-span-full py-12 text-center text-slate-400 bg-white rounded-3xl border border-slate-200/80">
             <GraduationCap className="w-8 h-8 mx-auto mb-2 opacity-40 text-slate-400" />
             Không tìm thấy giảng viên nào phù hợp.
           </div>
         ) : (
-          teachers.map((t) => (
+          filteredTeachers.map((t) => (
             <div
               key={t.id}
               className="bg-white rounded-3xl border border-slate-200/80 p-5 shadow-xs hover:shadow-md hover:border-indigo-200 transition-all duration-200 flex flex-col justify-between group"
@@ -146,9 +189,12 @@ export const TeachersView = () => {
 
                 {/* Profile Info */}
                 <div className="flex items-start gap-3">
-                  <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-indigo-600 to-violet-500 text-white flex items-center justify-center font-black text-sm shadow-md shadow-indigo-500/20 shrink-0">
-                    {t.full_name?.charAt(0) || 'G'}
-                  </div>
+                  <UserAvatar
+                    name={t.full_name}
+                    avatarUrl={t.avatar_url}
+                    size="md"
+                    className="rounded-2xl shrink-0 shadow-md shadow-indigo-500/15"
+                  />
                   <div className="min-w-0">
                     <h3 className="font-black text-base text-slate-900 group-hover:text-indigo-600 transition-colors truncate">
                       {t.full_name}
@@ -200,16 +246,19 @@ export const TeachersView = () => {
       </div>
 
       {/* Teacher Schedule Modal */}
-      {selectedSchedule && (
+      {selectedSchedule && createPortal(
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl max-w-xl w-full p-6 sm:p-7 shadow-2xl border border-slate-200/80">
             
             {/* Modal Header */}
             <div className="flex items-start justify-between pb-4 border-b border-slate-100">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-indigo-50 border border-indigo-200/80 flex items-center justify-center text-indigo-600">
-                  <Calendar className="w-5 h-5" />
-                </div>
+                <UserAvatar
+                  name={selectedSchedule.teacher.full_name}
+                  avatarUrl={selectedSchedule.teacher.avatar_url}
+                  size="md"
+                  className="rounded-2xl shrink-0 shadow-xs"
+                />
                 <div>
                   <h3 className="text-base font-black text-slate-900 tracking-tight">
                     Lịch giảng dạy chi tiết
@@ -273,7 +322,8 @@ export const TeachersView = () => {
             </div>
 
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
     </div>

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import { authApi } from '../services/api';
 import { 
   GraduationCap, ArrowRight, Lock, User, KeyRound, 
@@ -9,9 +10,11 @@ import {
 } from 'lucide-react';
 
 export const LoginView = () => {
-  const { login, register, isLoading } = useAuth();
+  const { login, register } = useAuth();
+  const toast = useToast();
   
   // Login form state
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -48,10 +51,16 @@ export const LoginView = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMsg('');
+    setIsLoggingIn(true);
     try {
       await login(username, password);
+      toast.success('Đăng nhập thành công!');
     } catch (err) {
-      setErrorMsg(err.message || 'Đăng nhập thất bại.');
+      const msg = err.message || 'Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin tài khoản.';
+      setErrorMsg(msg);
+      toast.error(msg);
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
@@ -83,9 +92,11 @@ export const LoginView = () => {
         password: regForm.password,
         role: regForm.role,
       });
-      // AuthContext will set user & token and redirect automatically
+      toast.success('Đăng ký tài khoản thành công!');
     } catch (err) {
-      setRegError(err.message || 'Đăng ký tài khoản thất bại.');
+      const msg = err.message || 'Đăng ký tài khoản thất bại.';
+      setRegError(msg);
+      toast.error(msg);
     } finally {
       setIsRegistering(false);
     }
@@ -102,10 +113,14 @@ export const LoginView = () => {
       const res = await authApi.forgotPassword(forgotIdentifier);
       setGeneratedOtp(res.data.reset_code);
       setResetCode(res.data.reset_code);
-      setForgotMsg(`Mã xác thực OTP đã được tạo: ${res.data.reset_code}`);
+      const msg = `Mã xác thực OTP đã được tạo: ${res.data.reset_code}`;
+      setForgotMsg(msg);
+      toast.success('Mã OTP khôi phục đã được tạo thành công!');
       setAuthMode('forgot_reset');
     } catch (err) {
-      setForgotError(err.message || 'Không thể tạo yêu cầu đặt lại mật khẩu.');
+      const msg = err.message || 'Không thể tạo yêu cầu đặt lại mật khẩu.';
+      setForgotError(msg);
+      toast.error(msg);
     } finally {
       setIsForgotLoading(false);
     }
@@ -129,7 +144,9 @@ export const LoginView = () => {
     setIsForgotLoading(true);
     try {
       const res = await authApi.resetPassword(forgotIdentifier, resetCode, newPassword);
-      setForgotMsg(res.message || 'Đặt lại mật khẩu thành công!');
+      const msg = res.message || 'Đặt lại mật khẩu thành công!';
+      setForgotMsg(msg);
+      toast.success(msg);
       setTimeout(() => {
         setUsername(forgotIdentifier);
         setPassword('');
@@ -138,7 +155,9 @@ export const LoginView = () => {
         setForgotMsg('Tài khoản đã được mở khóa! Vui lòng nhập mật khẩu mới để đăng nhập.');
       }, 1500);
     } catch (err) {
-      setForgotError(err.message || 'Không thể đặt lại mật khẩu.');
+      const msg = err.message || 'Không thể đặt lại mật khẩu.';
+      setForgotError(msg);
+      toast.error(msg);
     } finally {
       setIsForgotLoading(false);
     }
@@ -377,10 +396,10 @@ export const LoginView = () => {
 
                   <button
                     type="submit"
-                    disabled={isLoading}
+                    disabled={isLoggingIn}
                     className="w-full mt-4 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 active:scale-[0.99] text-white py-3.5 rounded-2xl font-bold text-xs shadow-lg shadow-indigo-600/25 transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
                   >
-                    {isLoading ? (
+                    {isLoggingIn ? (
                       <>
                         <RefreshCw className="w-4 h-4 animate-spin" />
                         Đang xác thực thông tin...

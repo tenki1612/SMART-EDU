@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { UserAvatar } from '../components/common/UserAvatar';
 import { useAuth } from '../context/AuthContext';
 import {
   coursesApi,
@@ -311,12 +312,15 @@ export const DashboardView = ({ onTabChange = () => {} }) => {
                       key={req.id}
                       className="p-3.5 bg-amber-50/50 hover:bg-amber-50 transition rounded-2xl border border-amber-200/70 flex items-center justify-between gap-3"
                     >
-                      <div>
-                        <div className="font-black text-slate-900 text-xs">{req.student_name}</div>
+                      <div className="flex items-center gap-3">
+                        <UserAvatar name={req.student_name} size="sm" className="rounded-xl shrink-0" />
+                        <div>
+                          <div className="font-black text-slate-900 text-xs">{req.student_name}</div>
                         <div className="text-[11px] text-slate-500 font-mono mt-0.5">
                           Mã HV: {req.student_code} &bull; Lớp: <span className="font-bold text-indigo-700">{req.class_code}</span>
                         </div>
                         <div className="text-[11px] text-slate-600 truncate mt-0.5">{req.course_title}</div>
+                        </div>
                       </div>
                       <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 border border-amber-300/60 shrink-0 shadow-2xs">
                         Chờ duyệt
@@ -700,9 +704,12 @@ export const DashboardView = ({ onTabChange = () => {} }) => {
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-11 h-11 rounded-2xl bg-indigo-50 text-indigo-700 flex items-center justify-center font-black text-sm shadow-2xs">
-                    {w.full_name?.charAt(0) || 'C'}
-                  </div>
+                  <UserAvatar
+                    name={w.full_name}
+                    avatarUrl={w.avatar_url}
+                    size="md"
+                    className="rounded-2xl shrink-0 shadow-2xs"
+                  />
                   <div>
                     <h4 className="font-black text-slate-900 text-sm">{w.full_name}</h4>
                     <p className="text-xs text-slate-500 font-mono">
