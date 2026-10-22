@@ -197,26 +197,6 @@ export const LoginView = () => {
                   Giải pháp toàn diện tối ưu hóa xếp lịch ma trận tuần, sổ điểm số hóa, phát hiện xung đột phòng học và theo dõi lộ trình IELTS & TOEIC.
                 </p>
               </div>
-
-              {/* 5 Roles Breakdown Pill */}
-              <div className="mt-6 pt-6 border-t border-slate-800/80 space-y-2.5">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-300 block">
-                  Phân quyền 5 vai trò hệ thống:
-                </span>
-                <div className="flex flex-wrap gap-1.5">
-                  {[
-                    { label: 'Quản trị viên (ADMIN)', color: 'border-rose-500/40 text-rose-300 bg-rose-500/10' },
-                    { label: 'Học vụ (STAFF)', color: 'border-purple-500/40 text-purple-300 bg-purple-500/10' },
-                    { label: 'Giảng viên (TEACHER)', color: 'border-sky-500/40 text-sky-300 bg-sky-500/10' },
-                    { label: 'Học viên (STUDENT)', color: 'border-emerald-500/40 text-emerald-300 bg-emerald-500/10' },
-                    { label: 'Phụ huynh (PARENT)', color: 'border-amber-500/40 text-amber-300 bg-amber-500/10' },
-                  ].map((r, idx) => (
-                    <span key={idx} className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border ${r.color}`}>
-                      {r.label}
-                    </span>
-                  ))}
-                </div>
-              </div>
             </div>
 
             {/* Bottom System Status */}
