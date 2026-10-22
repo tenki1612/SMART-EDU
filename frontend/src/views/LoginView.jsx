@@ -4,11 +4,12 @@ import { authApi } from '../services/api';
 import { 
   GraduationCap, ArrowRight, Lock, User, KeyRound, 
   ShieldAlert, CheckCircle2, ArrowLeft, Mail, RefreshCw, 
-  AlertTriangle, Eye, EyeOff, Sparkles, Award, Users, BookOpen
+  AlertTriangle, Eye, EyeOff, Sparkles, Award, Users, BookOpen,
+  UserPlus, UserX, Trash2, Phone, AlertCircle
 } from 'lucide-react';
 
 export const LoginView = () => {
-  const { login, isLoading } = useAuth();
+  const { login, register, isLoading } = useAuth();
   
   // Login form state
   const [username, setUsername] = useState('');
@@ -16,8 +17,24 @@ export const LoginView = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  // Forgot password flow state: 'login' | 'forgot_request' | 'forgot_reset'
+  // Mode: 'login' | 'register' | 'forgot_request' | 'forgot_reset'
   const [authMode, setAuthMode] = useState('login');
+
+  // Register form state
+  const [regForm, setRegForm] = useState({
+    username: '',
+    full_name: '',
+    email: '',
+    phone: '',
+    password: '',
+    confirm_password: '',
+    role: 'STUDENT',
+  });
+  const [showRegPassword, setShowRegPassword] = useState(false);
+  const [regError, setRegError] = useState('');
+  const [isRegistering, setIsRegistering] = useState(false);
+
+  // Forgot password flow state
   const [forgotIdentifier, setForgotIdentifier] = useState('');
   const [resetCode, setResetCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -35,6 +52,42 @@ export const LoginView = () => {
       await login(username, password);
     } catch (err) {
       setErrorMsg(err.message || 'Đăng nhập thất bại.');
+    }
+  };
+
+  // Handle student / parent self-registration
+  const handleRegister = async (e) => {
+    e.preventDefault();
+    setRegError('');
+
+    if (regForm.username.trim().length < 3) {
+      setRegError('Tên đăng nhập phải có tối thiểu 3 ký tự.');
+      return;
+    }
+    if (regForm.password.length < 6) {
+      setRegError('Mật khẩu phải có tối thiểu 6 ký tự.');
+      return;
+    }
+    if (regForm.password !== regForm.confirm_password) {
+      setRegError('Mật khẩu xác nhận không khớp với mật khẩu mới.');
+      return;
+    }
+
+    setIsRegistering(true);
+    try {
+      await register({
+        username: regForm.username.trim().toLowerCase(),
+        full_name: regForm.full_name.trim(),
+        email: regForm.email.trim().toLowerCase(),
+        phone: regForm.phone ? regForm.phone.trim() : null,
+        password: regForm.password,
+        role: regForm.role,
+      });
+      // AuthContext will set user & token and redirect automatically
+    } catch (err) {
+      setRegError(err.message || 'Đăng ký tài khoản thất bại.');
+    } finally {
+      setIsRegistering(false);
     }
   };
 
@@ -91,79 +144,95 @@ export const LoginView = () => {
     }
   };
 
+  // Error Classification
+  const isNotFoundError = errorMsg.includes('không tồn tại');
+  const isDeletedError = errorMsg.includes('bị xóa');
+  const isAdminLockError = errorMsg.includes('khóa hoặc vô hiệu hóa') || errorMsg.includes('Quản trị viên khóa');
   const isLockoutError = errorMsg.includes('khóa tạm thời') || errorMsg.includes('5 lần');
+  const isWrongPasswordError = errorMsg.includes('Mật khẩu không chính xác');
 
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col justify-center relative overflow-hidden font-sans">
       
       {/* Dynamic Background Mesh Glows */}
       <div className="absolute top-0 left-1/4 w-[600px] h-[600px] bg-gradient-to-br from-indigo-600/20 via-purple-600/10 to-transparent rounded-full blur-[140px] pointer-events-none" />
-      <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] bg-gradient-to-tr from-blue-600/15 via-emerald-600/10 to-transparent rounded-full blur-[140px] pointer-events-none" />
+      <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] bg-gradient-to-tr from-sky-600/20 via-blue-600/10 to-transparent rounded-full blur-[130px] pointer-events-none" />
 
-      {/* Main Container */}
-      <div className="max-w-6xl w-full mx-auto p-4 sm:p-6 lg:p-8 relative z-10">
-        <div className="bg-slate-900/90 backdrop-blur-2xl rounded-3xl border border-slate-800 shadow-2xl overflow-hidden grid grid-cols-1 lg:grid-cols-12 min-h-[620px]">
+      {/* Main Split Portal Card */}
+      <div className="relative z-10 max-w-5xl w-full mx-auto p-4 sm:p-6 lg:p-8">
+        <div className="bg-slate-900/90 backdrop-blur-xl rounded-3xl border border-slate-800 shadow-2xl overflow-hidden grid grid-cols-1 lg:grid-cols-12">
           
-          {/* LEFT COLUMN: HERO SHOWCASE (5 Cols) */}
-          <div className="lg:col-span-5 bg-gradient-to-br from-indigo-900 via-slate-900 to-slate-950 p-8 sm:p-10 flex flex-col justify-between border-b lg:border-b-0 lg:border-r border-slate-800 relative overflow-hidden">
-            <div className="relative z-10">
-              {/* Brand Logo */}
-              <div className="flex items-center gap-3 mb-8">
-                <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-indigo-500 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-indigo-500/30 ring-2 ring-indigo-400/30">
-                  <GraduationCap className="w-7 h-7" />
+          {/* LEFT COLUMN: BRANDING & SYSTEM SHOWCASE (5 Cols) */}
+          <div className="lg:col-span-5 bg-gradient-to-b from-slate-900 to-slate-950 p-8 sm:p-10 flex flex-col justify-between border-b lg:border-b-0 lg:border-r border-slate-800/80">
+            <div>
+              {/* Center Logo & Badges */}
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-indigo-600 to-indigo-500 flex items-center justify-center text-white shadow-lg shadow-indigo-600/30">
+                  <GraduationCap className="w-6 h-6" />
                 </div>
                 <div>
-                  <span className="font-black text-2xl tracking-tight text-white block leading-tight">
+                  <h1 className="text-xl font-black text-white tracking-tight flex items-center gap-1.5">
                     SMART-EDU
-                  </span>
-                  <span className="text-[11px] font-bold text-indigo-300 uppercase tracking-widest flex items-center gap-1.5">
-                    <Sparkles className="w-3 h-3 text-indigo-400" />
-                    Language Center LMS
+                    <Sparkles className="w-4 h-4 text-amber-400" />
+                  </h1>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400 block">
+                    Language Center LMS 2.0
                   </span>
                 </div>
               </div>
 
-              {/* Tagline */}
-              <div className="space-y-3 mt-6">
-                <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight leading-snug">
-                  Nền Tảng Quản Lý & Khảo Thí Ngoại Ngữ Chuẩn Quốc Tế
-                </h1>
-                <p className="text-xs sm:text-sm text-slate-300 leading-relaxed font-normal">
-                  Tối ưu hóa quản trị đào tạo, xếp lịch thông minh chống trùng giờ, sổ điểm bảo mật và cổng kết nối đa vai trò.
+              {/* Tagline & Subheading */}
+              <div className="mt-8">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 mb-3">
+                  <Award className="w-3.5 h-3.5 text-indigo-400" />
+                  Chuẩn Đào Tạo Quốc Tế
+                </span>
+                <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight leading-snug">
+                  Hệ thống Quản lý <br className="hidden sm:inline" />
+                  <span className="bg-gradient-to-r from-indigo-400 via-sky-300 to-purple-400 bg-clip-text text-transparent">
+                    Đào tạo & Khảo thí
+                  </span>
+                </h2>
+                <p className="mt-3 text-xs text-slate-400 leading-relaxed">
+                  Giải pháp toàn diện tối ưu hóa xếp lịch ma trận tuần, sổ điểm số hóa, phát hiện xung đột phòng học và theo dõi lộ trình IELTS & TOEIC.
                 </p>
               </div>
 
-              {/* Value Badges */}
-              <div className="grid grid-cols-2 gap-3 mt-8">
-                <div className="bg-white/5 border border-white/10 p-3.5 rounded-2xl backdrop-blur-md">
-                  <div className="flex items-center gap-2 text-indigo-400 mb-1">
-                    <Award className="w-4 h-4" />
-                    <span className="text-xs font-bold uppercase tracking-wider text-white">IELTS &bull; TOEIC</span>
-                  </div>
-                  <p className="text-[11px] text-slate-400">Chuẩn hóa lộ trình 8 cấp độ</p>
-                </div>
-
-                <div className="bg-white/5 border border-white/10 p-3.5 rounded-2xl backdrop-blur-md">
-                  <div className="flex items-center gap-2 text-emerald-400 mb-1">
-                    <Users className="w-4 h-4" />
-                    <span className="text-xs font-bold uppercase tracking-wider text-white">5 Phân Quyền</span>
-                  </div>
-                  <p className="text-[11px] text-slate-400">Bảo mật dữ liệu tuyệt đối</p>
+              {/* 5 Roles Breakdown Pill */}
+              <div className="mt-6 pt-6 border-t border-slate-800/80 space-y-2.5">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-300 block">
+                  Phân quyền 5 vai trò hệ thống:
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    { label: 'Quản trị viên (ADMIN)', color: 'border-rose-500/40 text-rose-300 bg-rose-500/10' },
+                    { label: 'Học vụ (STAFF)', color: 'border-purple-500/40 text-purple-300 bg-purple-500/10' },
+                    { label: 'Giảng viên (TEACHER)', color: 'border-sky-500/40 text-sky-300 bg-sky-500/10' },
+                    { label: 'Học viên (STUDENT)', color: 'border-emerald-500/40 text-emerald-300 bg-emerald-500/10' },
+                    { label: 'Phụ huynh (PARENT)', color: 'border-amber-500/40 text-amber-300 bg-amber-500/10' },
+                  ].map((r, idx) => (
+                    <span key={idx} className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border ${r.color}`}>
+                      {r.label}
+                    </span>
+                  ))}
                 </div>
               </div>
             </div>
 
-            {/* Bottom System Info */}
-            <div className="relative z-10 pt-6 mt-6 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
-              <span className="font-semibold text-slate-300">FastAPI &bull; React 19</span>
-              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-950/80 border border-emerald-700/50 text-emerald-400 font-mono font-bold text-[10px]">
+            {/* Bottom System Status */}
+            <div className="mt-8 pt-4 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
+              <span className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                Hệ thống máy chủ
+              </span>
+              <span className="text-emerald-400 font-bold font-mono flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                 ONLINE
               </span>
             </div>
           </div>
 
-          {/* RIGHT COLUMN: LOGIN FORM (7 Cols) */}
+          {/* RIGHT COLUMN: LOGIN / REGISTER / FORGOT FORM (7 Cols) */}
           <div className="lg:col-span-7 bg-white p-8 sm:p-12 flex flex-col justify-between">
             
             {/* MODE 1: LOGIN FORM */}
@@ -178,20 +247,59 @@ export const LoginView = () => {
                   </div>
                 </div>
 
-                {/* Error Banner */}
+                {/* Error Banner with Differentiated Cues */}
                 {errorMsg && (
                   <div className={`mt-4 p-4 rounded-2xl border text-xs font-semibold flex items-start gap-3 transition-all ${
-                    isLockoutError 
-                      ? 'bg-rose-50 border-rose-200 text-rose-800' 
-                      : 'bg-amber-50 border-amber-200 text-amber-800'
+                    isNotFoundError
+                      ? 'bg-rose-50 border-rose-200 text-rose-800'
+                      : isDeletedError
+                      ? 'bg-slate-100 border-slate-300 text-slate-800'
+                      : isAdminLockError
+                      ? 'bg-red-50 border-red-200 text-red-800'
+                      : isLockoutError
+                      ? 'bg-rose-50 border-rose-200 text-rose-800'
+                      : isWrongPasswordError
+                      ? 'bg-amber-50 border-amber-200 text-amber-800'
+                      : 'bg-rose-50 border-rose-200 text-rose-800'
                   }`}>
-                    {isLockoutError ? (
+                    {isNotFoundError ? (
+                      <UserX className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+                    ) : isDeletedError ? (
+                      <Trash2 className="w-5 h-5 text-slate-600 shrink-0 mt-0.5" />
+                    ) : isAdminLockError ? (
+                      <Lock className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+                    ) : isLockoutError ? (
                       <ShieldAlert className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
-                    ) : (
+                    ) : isWrongPasswordError ? (
                       <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                    ) : (
+                      <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
                     )}
                     <div className="flex-1 leading-relaxed">
                       <p>{errorMsg}</p>
+
+                      {/* Action for Not Found: Shortcut to Register */}
+                      {isNotFoundError && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRegForm({
+                              ...regForm,
+                              username: username.includes('@') ? '' : username,
+                              email: username.includes('@') ? username : '',
+                            });
+                            setAuthMode('register');
+                            setErrorMsg('');
+                            setRegError('');
+                          }}
+                          className="mt-2 inline-flex items-center gap-1.5 text-xs font-bold text-indigo-700 hover:text-indigo-900 underline cursor-pointer"
+                        >
+                          <UserPlus className="w-3.5 h-3.5" />
+                          Chưa có tài khoản? Bấm để Đăng ký tài khoản ngay &rarr;
+                        </button>
+                      )}
+
+                      {/* Action for Lockout: Shortcut to Forgot Password */}
                       {isLockoutError && (
                         <button
                           type="button"
@@ -204,6 +312,22 @@ export const LoginView = () => {
                         >
                           <KeyRound className="w-3.5 h-3.5" />
                           Mở khóa tài khoản ngay qua chức năng Quên mật khẩu &rarr;
+                        </button>
+                      )}
+
+                      {/* Action for Wrong Password: Shortcut to Forgot Password */}
+                      {isWrongPasswordError && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setForgotIdentifier(username);
+                            setAuthMode('forgot_request');
+                            setErrorMsg('');
+                          }}
+                          className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-bold text-amber-900 hover:text-indigo-800 underline cursor-pointer"
+                        >
+                          <KeyRound className="w-3.5 h-3.5" />
+                          Quên mật khẩu? Lấy lại mật khẩu bằng mã OTP
                         </button>
                       )}
                     </div>
@@ -288,11 +412,226 @@ export const LoginView = () => {
                       </>
                     )}
                   </button>
+
+                  {/* Switch to Register */}
+                  <div className="mt-5 pt-4 border-t border-slate-100 text-center">
+                    <p className="text-xs text-slate-500">
+                      Chưa có tài khoản học viên?{' '}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAuthMode('register');
+                          setErrorMsg('');
+                          setRegError('');
+                        }}
+                        className="font-bold text-indigo-600 hover:text-indigo-800 hover:underline transition cursor-pointer inline-flex items-center gap-1"
+                      >
+                        <UserPlus className="w-3.5 h-3.5 inline" />
+                        Đăng ký tài khoản ngay
+                      </button>
+                    </p>
+                  </div>
                 </form>
               </div>
             )}
 
-            {/* MODE 2: FORGOT PASSWORD - STEP 1 (REQUEST OTP) */}
+            {/* MODE 2: REGISTER FORM */}
+            {authMode === 'register' && (
+              <div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMode('login');
+                    setRegError('');
+                  }}
+                  className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-slate-800 mb-4 transition cursor-pointer"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  Quay lại đăng nhập
+                </button>
+
+                <div className="space-y-1 mb-4">
+                  <h2 className="text-2xl font-black text-slate-900 tracking-tight">Đăng ký tài khoản</h2>
+                  <p className="text-xs text-slate-500">
+                    Khởi tạo tài khoản học tập để tham gia lộ trình IELTS & TOEIC chuẩn quốc tế
+                  </p>
+                </div>
+
+                {/* Register Error Banner */}
+                {regError && (
+                  <div className="mb-4 p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" />
+                    <span>{regError}</span>
+                  </div>
+                )}
+
+                <form onSubmit={handleRegister} className="space-y-3 text-xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="font-bold text-slate-700 block mb-1">Tên đăng nhập:</label>
+                      <div className="relative">
+                        <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="text"
+                          required
+                          placeholder="ví dụ: khang2026"
+                          value={regForm.username}
+                          onChange={(e) => setRegForm({ ...regForm, username: e.target.value })}
+                          className="w-full pl-10 pr-3.5 py-2.5 rounded-2xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-600 focus:ring-4 focus:ring-indigo-100 outline-hidden font-mono font-medium transition"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="font-bold text-slate-700 block mb-1">Họ và tên đầy đủ:</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="ví dụ: Phạm Minh Khang"
+                        value={regForm.full_name}
+                        onChange={(e) => setRegForm({ ...regForm, full_name: e.target.value })}
+                        className="w-full px-3.5 py-2.5 rounded-2xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-600 focus:ring-4 focus:ring-indigo-100 outline-hidden font-medium transition"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="font-bold text-slate-700 block mb-1">Địa chỉ Email:</label>
+                      <div className="relative">
+                        <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="email"
+                          required
+                          placeholder="email@example.com"
+                          value={regForm.email}
+                          onChange={(e) => setRegForm({ ...regForm, email: e.target.value })}
+                          className="w-full pl-10 pr-3.5 py-2.5 rounded-2xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-600 focus:ring-4 focus:ring-indigo-100 outline-hidden font-medium transition"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="font-bold text-slate-700 block mb-1">Số điện thoại liên hệ:</label>
+                      <div className="relative">
+                        <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="text"
+                          placeholder="0901234567"
+                          value={regForm.phone}
+                          onChange={(e) => setRegForm({ ...regForm, phone: e.target.value })}
+                          className="w-full pl-10 pr-3.5 py-2.5 rounded-2xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-600 focus:ring-4 focus:ring-indigo-100 outline-hidden font-medium transition"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Vai trò đăng ký:</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className={`flex items-center gap-2 p-2.5 rounded-xl border cursor-pointer font-bold text-xs ${
+                        regForm.role === 'STUDENT' ? 'bg-indigo-50 border-indigo-600 text-indigo-700' : 'bg-slate-50 border-slate-200 text-slate-600'
+                      }`}>
+                        <input
+                          type="radio"
+                          name="regRole"
+                          value="STUDENT"
+                          checked={regForm.role === 'STUDENT'}
+                          onChange={(e) => setRegForm({ ...regForm, role: e.target.value })}
+                          className="text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <span>🎒 Học viên</span>
+                      </label>
+                      <label className={`flex items-center gap-2 p-2.5 rounded-xl border cursor-pointer font-bold text-xs ${
+                        regForm.role === 'PARENT' ? 'bg-indigo-50 border-indigo-600 text-indigo-700' : 'bg-slate-50 border-slate-200 text-slate-600'
+                      }`}>
+                        <input
+                          type="radio"
+                          name="regRole"
+                          value="PARENT"
+                          checked={regForm.role === 'PARENT'}
+                          onChange={(e) => setRegForm({ ...regForm, role: e.target.value })}
+                          className="text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <span>👨‍👩‍👧 Phụ huynh</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="font-bold text-slate-700 block mb-1">Mật khẩu (tối thiểu 6 ký tự):</label>
+                      <div className="relative">
+                        <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                        <input
+                          type={showRegPassword ? 'text' : 'password'}
+                          required
+                          placeholder="••••••••"
+                          value={regForm.password}
+                          onChange={(e) => setRegForm({ ...regForm, password: e.target.value })}
+                          className="w-full pl-10 pr-9 py-2.5 rounded-2xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-600 focus:ring-4 focus:ring-indigo-100 outline-hidden font-medium transition"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowRegPassword(!showRegPassword)}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                        >
+                          {showRegPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="font-bold text-slate-700 block mb-1">Xác nhận mật khẩu:</label>
+                      <div className="relative">
+                        <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="password"
+                          required
+                          placeholder="Nhập lại mật khẩu..."
+                          value={regForm.confirm_password}
+                          onChange={(e) => setRegForm({ ...regForm, confirm_password: e.target.value })}
+                          className="w-full pl-10 pr-3.5 py-2.5 rounded-2xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-600 focus:ring-4 focus:ring-indigo-100 outline-hidden font-medium transition"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isRegistering}
+                    className="w-full mt-2 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 active:scale-[0.99] text-white py-3 rounded-2xl font-bold text-xs shadow-lg shadow-indigo-600/25 transition cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    {isRegistering ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        Đang tạo tài khoản & đăng nhập...
+                      </>
+                    ) : (
+                      <>
+                        Hoàn tất đăng ký & Bắt đầu học ngay
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+
+                  <div className="text-center pt-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAuthMode('login');
+                        setRegError('');
+                      }}
+                      className="text-xs font-bold text-slate-500 hover:text-indigo-600 cursor-pointer"
+                    >
+                      Đã có tài khoản? <span className="text-indigo-600 underline">Đăng nhập ngay</span>
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            {/* MODE 3: FORGOT PASSWORD - STEP 1 (REQUEST OTP) */}
             {authMode === 'forgot_request' && (
               <div>
                 <button
@@ -330,7 +669,7 @@ export const LoginView = () => {
                       <input
                         type="text"
                         required
-                        placeholder="Nhập username hoặc email của bạn..."
+                        placeholder="Nhập username hoặc email..."
                         value={forgotIdentifier}
                         onChange={(e) => setForgotIdentifier(e.target.value)}
                         className="w-full pl-10 pr-3.5 py-3 rounded-2xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-600 focus:ring-4 focus:ring-indigo-100 outline-hidden font-medium transition"
@@ -341,7 +680,7 @@ export const LoginView = () => {
                   <button
                     type="submit"
                     disabled={isForgotLoading}
-                    className="w-full mt-4 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 active:scale-[0.99] text-white py-3.5 rounded-2xl font-bold text-xs shadow-lg shadow-indigo-600/25 transition cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
+                    className="w-full mt-2 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 active:scale-[0.99] text-white py-3.5 rounded-2xl font-bold text-xs shadow-lg shadow-indigo-600/25 transition cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
                   >
                     {isForgotLoading ? (
                       <>
@@ -350,7 +689,7 @@ export const LoginView = () => {
                       </>
                     ) : (
                       <>
-                        Nhận mã xác thực OTP
+                        Gửi mã xác thực OTP
                         <ArrowRight className="w-4 h-4" />
                       </>
                     )}
@@ -359,7 +698,7 @@ export const LoginView = () => {
               </div>
             )}
 
-            {/* MODE 3: FORGOT PASSWORD - STEP 2 (RESET WITH OTP) */}
+            {/* MODE 4: FORGOT PASSWORD - STEP 2 (RESET WITH OTP) */}
             {authMode === 'forgot_reset' && (
               <div>
                 <button
@@ -371,25 +710,23 @@ export const LoginView = () => {
                   className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-slate-800 mb-6 transition cursor-pointer"
                 >
                   <ArrowLeft className="w-3.5 h-3.5" />
-                  Đổi tài khoản khác
+                  Yêu cầu mã khác
                 </button>
 
                 <div className="space-y-1">
                   <h2 className="text-2xl font-black text-slate-900 tracking-tight">Đặt lại mật khẩu</h2>
                   <p className="text-xs text-slate-500">
-                    Nhập mã OTP và tạo mật khẩu mới cho tài khoản <strong className="text-indigo-600">{forgotIdentifier}</strong>
+                    Nhập mã xác thực OTP gồm 6 chữ số và thiết lập mật khẩu mới
                   </p>
                 </div>
 
                 {generatedOtp && (
-                  <div className="mt-4 p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-semibold">
+                  <div className="mt-4 p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <KeyRound className="w-4 h-4 text-amber-600 shrink-0" />
-                      <span>Mã OTP xác thực mẫu: <strong className="font-mono text-sm tracking-wider text-amber-950 bg-amber-200/80 px-2.5 py-0.5 rounded-lg">{generatedOtp}</strong></span>
+                      <Sparkles className="w-4 h-4 text-amber-600" />
+                      <span>Mã OTP của bạn: <strong className="font-mono text-sm text-indigo-700">{generatedOtp}</strong></span>
                     </div>
-                    <p className="mt-1 text-[11px] text-amber-700 font-normal">
-                      (Mã có hiệu lực trong 15 phút. Hệ thống đã tự động điền sẵn vào ô bên dưới)
-                    </p>
+                    <span className="text-[10px] text-amber-700 font-semibold">(Hiệu lực 15 phút)</span>
                   </div>
                 )}
 
@@ -407,10 +744,10 @@ export const LoginView = () => {
                       type="text"
                       required
                       maxLength={6}
-                      placeholder="Nhập mã 6 chữ số..."
+                      placeholder="ví dụ: 123456"
                       value={resetCode}
                       onChange={(e) => setResetCode(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-2xl border border-slate-300 font-mono tracking-widest text-center text-sm font-bold focus:border-indigo-600 focus:ring-4 focus:ring-indigo-100 outline-hidden transition"
+                      className="w-full px-3.5 py-2.5 rounded-2xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-600 focus:ring-4 focus:ring-indigo-100 outline-hidden font-mono font-bold tracking-widest text-center text-sm transition"
                     />
                   </div>
 

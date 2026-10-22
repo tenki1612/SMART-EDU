@@ -347,6 +347,64 @@ def run_tests():
     assert "access_token" in admin_reset_login.json()["data"]
     print("✓ 13.7. Login with Admin-Reset Password: PASSED")
 
+    # ================= 14. AUTHENTICATION ERROR DIFFERENTIATION & REGISTRATION =================
+    # 14.1. Account Not Found returns explicit error
+    not_found_login = client.post("/api/v1/auth/login", json={
+        "username": f"nonexistent_{int(time.time())}",
+        "password": "Password123"
+    })
+    assert not_found_login.status_code == 400
+    assert "không tồn tại" in not_found_login.json()["detail"].lower()
+    print("✓ 14.1. Account Not Found Login Returns Explicit Error: PASSED")
+
+    # 14.2. Soft-deleted Account Login returns explicit error
+    # Delete managed user
+    del_res = client.delete(f"/api/v1/accounts/{managed_user_id}", headers=headers)
+    assert del_res.status_code == 200
+    deleted_login = client.post("/api/v1/auth/login", json={
+        "username": managed_user_name,
+        "password": "AdminAssignedPass999!"
+    })
+    assert deleted_login.status_code == 400
+    assert "bị xóa" in deleted_login.json()["detail"].lower()
+    print("✓ 14.2. Deleted Account Login Returns Explicit Error: PASSED")
+
+    # 14.3. Student Self-Registration via POST /auth/register
+    reg_username = f"new_student_{int(time.time())}"
+    reg_email = f"{reg_username}@student.edu.vn"
+    reg_res = client.post("/api/v1/auth/register", json={
+        "username": reg_username,
+        "email": reg_email,
+        "full_name": "Học Viên Mới Đăng Ký",
+        "password": "RegisterPass123",
+        "phone": "0987654321",
+        "role": "STUDENT"
+    })
+    assert reg_res.status_code == 200
+    assert "access_token" in reg_res.json()["data"]
+    assert reg_res.json()["data"]["role"] == "STUDENT"
+    print("✓ 14.3. Student Self-Registration: PASSED")
+
+    # 14.4. Duplicate Registration Blocked
+    dup_reg_res = client.post("/api/v1/auth/register", json={
+        "username": reg_username,
+        "email": reg_email,
+        "full_name": "Học Viên Trùng Lặp",
+        "password": "RegisterPass123"
+    })
+    assert dup_reg_res.status_code == 400
+    assert "đã được sử dụng" in dup_reg_res.json()["detail"].lower()
+    print("✓ 14.4. Duplicate Registration Blocked: PASSED")
+
+    # 14.5. Login with Newly Registered Account
+    new_student_login = client.post("/api/v1/auth/login", json={
+        "username": reg_username,
+        "password": "RegisterPass123"
+    })
+    assert new_student_login.status_code == 200
+    assert "access_token" in new_student_login.json()["data"]
+    print("✓ 14.5. Newly Registered Student Login: PASSED")
+
     print("\n🎉 ALL BACKEND INTEGRATION TESTS PASSED (100% SUCCESS)!")
 
 if __name__ == "__main__":

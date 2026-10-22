@@ -5,7 +5,7 @@ from app.modules.accounts.models import User
 from app.core.security import verify_password, create_access_token, get_password_hash
 from app.core.exceptions import BusinessException, NotFoundException
 from app.modules.auth.schemas import (
-    LoginRequest, TokenResponse,
+    LoginRequest, RegisterRequest, TokenResponse,
     ForgotPasswordRequest, ForgotPasswordResponse,
     ResetPasswordRequest, ResetPasswordResponse
 )
@@ -35,19 +35,24 @@ class AuthService:
 
     @staticmethod
     def authenticate_user(db: Session, creds: LoginRequest) -> TokenResponse:
+        # Truy vấn tìm tài khoản bất kể trạng thái is_deleted để phản hồi chính xác lý do lỗi
         user = db.query(User).filter(
-            (User.username == creds.username) | (User.email == creds.username),
-            User.is_deleted == False
+            (User.username == creds.username) | (User.email == creds.username)
         ).first()
         
+        # 1. Trường hợp tài khoản không tồn tại
         if not user:
-            raise BusinessException("Tên đăng nhập hoặc mật khẩu không chính xác.")
-        
-        # 1. Kiểm tra trạng thái hoạt động do Quản trị viên quản trị (Khóa tài khoản)
+            raise BusinessException("Tài khoản không tồn tại trong hệ thống. Vui lòng kiểm tra lại thông tin hoặc đăng ký tài khoản mới.")
+
+        # 2. Trường hợp tài khoản đã bị xóa (Soft-deleted)
+        if user.is_deleted:
+            raise BusinessException("Tài khoản này đã bị xóa khỏi hệ thống. Vui lòng liên hệ ban quản trị để được hỗ trợ.")
+
+        # 3. Kiểm tra trạng thái hoạt động do Quản trị viên quản trị (Khóa tài khoản)
         if not user.is_active:
             raise BusinessException("Tài khoản của bạn đã bị Quản trị viên khóa hoặc vô hiệu hóa. Vui lòng liên hệ ban quản trị để được hỗ trợ.")
 
-        # 2. Kiểm tra tài khoản có đang bị khóa tạm thời do nhập sai quá 5 lần không
+        # 4. Kiểm tra tài khoản có đang bị khóa tạm thời do nhập sai quá 5 lần không
         is_locked, remaining_minutes = AuthService._check_account_lockout(user)
         if is_locked:
             raise BusinessException(
@@ -61,7 +66,7 @@ class AuthService:
             user.failed_login_attempts = 0
             db.commit()
 
-        # 3. Xác thực mật khẩu
+        # 5. Xác thực mật khẩu
         if not verify_password(creds.password, user.hashed_password):
             user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
             
@@ -83,6 +88,66 @@ class AuthService:
         user.failed_login_attempts = 0
         user.locked_until = None
         db.commit()
+
+        token = create_access_token(subject=user.id, role=user.role.value)
+        return TokenResponse(
+            access_token=token,
+            user_id=user.id,
+            username=user.username,
+            full_name=user.full_name,
+            role=user.role
+        )
+
+    @staticmethod
+    def register_user(db: Session, req: RegisterRequest) -> TokenResponse:
+        """Đăng ký tài khoản mới cho học viên hoặc phụ huynh"""
+        from app.core.permissions import RoleEnum
+        username = req.username.strip().lower()
+        email = req.email.strip().lower()
+        full_name = req.full_name.strip()
+
+        if len(username) < 3:
+            raise BusinessException("Tên đăng nhập phải có ít nhất 3 ký tự.")
+
+        if len(req.password) < 6:
+            raise BusinessException("Mật khẩu phải có tối thiểu 6 ký tự.")
+
+        # Kiểm tra trùng lặp username hoặc email
+        existing = db.query(User).filter(
+            (User.username == username) | (User.email == email)
+        ).first()
+        if existing:
+            if existing.username == username:
+                raise BusinessException("Tên đăng nhập này đã được sử dụng. Vui lòng chọn tên đăng nhập khác.")
+            raise BusinessException("Địa chỉ email này đã được sử dụng. Vui lòng chọn email khác.")
+
+        # Vai trò cho phép tự đăng ký: STUDENT hoặc PARENT
+        chosen_role = req.role if req.role in [RoleEnum.STUDENT, RoleEnum.PARENT] else RoleEnum.STUDENT
+
+        user = User(
+            username=username,
+            email=email,
+            full_name=full_name,
+            hashed_password=get_password_hash(req.password),
+            role=chosen_role,
+            phone=req.phone.strip() if req.phone else None,
+            is_active=True
+        )
+        db.add(user)
+        db.flush()
+
+        # Nếu là học viên thì tự động tạo Student profile
+        if chosen_role == RoleEnum.STUDENT:
+            from app.modules.students.models import Student
+            student = Student(
+                user_id=user.id,
+                student_code=f"HV{user.id:04d}",
+                status="ACTIVE"
+            )
+            db.add(student)
+
+        db.commit()
+        db.refresh(user)
 
         token = create_access_token(subject=user.id, role=user.role.value)
         return TokenResponse(

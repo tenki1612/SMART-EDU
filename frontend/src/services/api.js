@@ -46,6 +46,10 @@ export const authApi = {
         const res = await apiClient.post('/auth/reset-password', { identifier, reset_code, new_password });
         return res.data;
     },
+    register: async (userData) => {
+        const res = await apiClient.post('/auth/register', userData);
+        return res.data;
+    },
 };
 
 // 2. Accounts API

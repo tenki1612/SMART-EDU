@@ -6,6 +6,14 @@ class LoginRequest(BaseModel):
     username: str
     password: str
 
+class RegisterRequest(BaseModel):
+    username: str
+    email: EmailStr
+    full_name: str
+    password: str
+    phone: Optional[str] = None
+    role: RoleEnum = RoleEnum.STUDENT
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"

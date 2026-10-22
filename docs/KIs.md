@@ -27,6 +27,7 @@ Tài liệu này lưu trữ các **Knowledge Items (KIs)** — các bài học k
 - **KI-18:** Thiết Kế Bảng Điều Khiển Chuyên Biệt Theo Vai Trò (Role-Tailored Dashboards Architecture)
 - **KI-19:** Phòng Vệ Chống Tấn Công Dò Mật Khẩu (Brute-force Lockout) & Khôi Phục Mật Khẩu Bằng Mã OTP
 - **KI-20:** Quản Trị Phân Quyền An Toàn: Nâng Quyền Vai Trò, Khóa/Mở Khóa Tức Thì và Đồng Bộ Hồ Sơ Liên Kết
+- **KI-21:** Phân Loại Phản Hồi Lỗi Xác Thực Đa Tầng & Cơ Chế Tự Đăng Ký Tài Khoản (Self-Registration)
 
 ---
 
@@ -357,3 +358,27 @@ Tài liệu này lưu trữ các **Knowledge Items (KIs)** — các bài học k
   - Bộ lọc kép đa chiều: Lọc tìm kiếm theo từ khóa + Lọc theo Vai trò + Lọc theo Trạng thái (Hoạt động / Bị khóa).
   - Modal Nâng quyền vai trò trực quan với mô tả trách nhiệm rõ ràng cho từng vai trò (`ADMIN`, `ACADEMIC_STAFF`, `TEACHER`, `STUDENT`, `PARENT`).
   - Modal Cấp lại mật khẩu tích hợp bộ sinh mật khẩu ngẫu nhiên an toàn một chạm và nút sao chép Clipboard.
+
+
+---
+
+### [KI-21] Phân Loại Phản Hồi Lỗi Xác Thực Đa Tầng & Cơ Chế Tự Đăng Ký Tài Khoản (Self-Registration)
+- **Bối cảnh nghiệp vụ:**
+  - Trải nghiệm đăng nhập truyền thống thường chỉ trả về thông báo chung chung *"Tên đăng nhập hoặc mật khẩu không chính xác"*. Điều này gây khó khăn lớn cho người dùng khi không biết nguyên nhân thật sự (chưa có tài khoản, gõ nhầm mật khẩu, tài khoản bị Admin khóa hay tài khoản đã bị xóa).
+  - Người dùng mới (Học viên, Phụ huynh) cần có khả năng tự đăng ký tài khoản tham gia học tập mà không cần chờ Admin tạo thủ công.
+- **Giải pháp Kiến trúc Backend (Detailed Authentication Error Differentiation):**
+  1. *Quy trình Kiểm tra 5 Tầng Phân Biệt (`AuthService.authenticate_user`):*
+     - **Tầng 1 (Tồn tại):** Tìm tài khoản theo username hoặc email trong toàn bộ cơ sở dữ liệu (kể cả bản ghi `is_deleted`). Nếu không tìm thấy $ightarrow$ Báo lỗi *"Tài khoản không tồn tại trong hệ thống. Vui lòng kiểm tra lại thông tin hoặc đăng ký tài khoản mới."*
+     - **Tầng 2 (Đã xóa):** Nếu `user.is_deleted == True` $ightarrow$ Báo lỗi *"Tài khoản này đã bị xóa khỏi hệ thống. Vui lòng liên hệ ban quản trị để được hỗ trợ."*
+     - **Tầng 3 (Khóa bởi Admin):** Nếu `user.is_active == False` $ightarrow$ Báo lỗi *"Tài khoản của bạn đã bị Quản trị viên khóa hoặc vô hiệu hóa. Vui lòng liên hệ ban quản trị để được hỗ trợ."*
+     - **Tầng 4 (Khóa tạm thời 15p):** Nếu `user.locked_until > now` $ightarrow$ Báo lỗi *"Tài khoản của bạn đã bị khóa tạm thời do nhập sai mật khẩu quá 5 lần. Vui lòng thử lại sau X phút..."*
+     - **Tầng 5 (Sai mật khẩu):** So khớp Bcrypt. Nếu sai $ightarrow$ Tăng số lần sai và báo lỗi *"Mật khẩu không chính xác. Bạn còn {5 - attempts} lần thử trước khi tài khoản bị khóa tạm thời."*
+  2. *Quy trình Tự Đăng Ký Tài Khoản (`POST /api/v1/auth/register`):*
+     - Cho phép tự đăng ký với vai trò `STUDENT` hoặc `PARENT`.
+     - Tự động chuẩn hóa `username` và `email` (lowercase, trim).
+     - Ràng buộc độ dài mật khẩu $\ge 6$ ký tự, băm Bcrypt an toàn.
+     - Tự động khởi tạo `Student` profile (mã `HV...`) nếu đăng ký học viên.
+     - Trả về ngay lập tức JWT `TokenResponse` để người dùng được đăng nhập thẳng vào hệ thống mà không cần thêm thao tác.
+- **Trải nghiệm Giao diện Frontend (`LoginView.jsx`):**
+  - Khối hiển thị lỗi có icon chuyên biệt theo từng loại: `UserX` (Không tồn tại), `Trash2` (Đã bị xóa), `Lock` (Khóa bởi Admin), `ShieldAlert` (Khóa tạm thời), `AlertTriangle` (Sai mật khẩu).
+  - Tích hợp nút hành động ngữ cảnh (Contextual Actions): Nút *"Đăng ký tài khoản mới ngay"* xuất hiện ngay trong thẻ lỗi nếu tài khoản chưa có trong hệ thống.

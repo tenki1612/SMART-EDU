@@ -5,7 +5,7 @@ from app.core.permissions import get_current_user_payload
 from app.common.response import ApiResponse
 from app.modules.accounts.models import User
 from app.modules.auth.schemas import (
-    LoginRequest, TokenResponse, UserInfoResponse,
+    LoginRequest, RegisterRequest, TokenResponse, UserInfoResponse,
     ForgotPasswordRequest, ForgotPasswordResponse,
     ResetPasswordRequest, ResetPasswordResponse
 )
@@ -17,6 +17,11 @@ router = APIRouter()
 def login(creds: LoginRequest, db: Session = Depends(get_db)):
     result = AuthService.authenticate_user(db, creds)
     return ApiResponse(data=result, message="Đăng nhập thành công")
+
+@router.post("/register", response_model=ApiResponse[TokenResponse], summary="Đăng ký tài khoản mới")
+def register(req: RegisterRequest, db: Session = Depends(get_db)):
+    result = AuthService.register_user(db, req)
+    return ApiResponse(data=result, message="Đăng ký tài khoản thành công")
 
 @router.post("/logout", response_model=ApiResponse[dict], summary="FR-02: Đăng xuất")
 def logout(payload: dict = Depends(get_current_user_payload)):
