@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
+import { useConfirm } from '../../context/ConfirmDialogContext';
 import { accountsApi } from '../../services/api';
 import { UserAvatar } from '../common/UserAvatar';
 import {
@@ -33,6 +34,7 @@ const PRESET_AVATARS = [
 export const ProfileModal = ({ isOpen, onClose }) => {
   const { user, updateUserProfile } = useAuth();
   const toast = useToast();
+  const confirm = useConfirm();
   const fileInputRef = useRef(null);
 
   const [activeTab, setActiveTab] = useState('avatar'); // 'avatar' | 'info' | 'password'
@@ -122,9 +124,14 @@ export const ProfileModal = ({ isOpen, onClose }) => {
 
   // 4. Remove avatar
   const handleRemoveAvatar = async () => {
-    if (!window.confirm('Bạn có chắc chắn muốn gỡ bỏ ảnh đại diện và quay về chữ cái mặc định?')) {
-      return;
-    }
+    const isConfirmed = await confirm({
+      title: 'Gỡ bỏ ảnh đại diện',
+      message: 'Bạn có chắc chắn muốn gỡ bỏ ảnh đại diện hiện tại và quay về chữ cái mặc định?',
+      confirmText: 'Gỡ ảnh',
+      cancelText: 'Giữ lại',
+      type: 'warning',
+    });
+    if (!isConfirmed) return;
 
     setIsUploading(true);
     try {

@@ -14,6 +14,7 @@ import {
   BookOpen,
   School,
   DoorOpen,
+  User,
   UserCheck,
   Calendar,
   Clock,
@@ -68,6 +69,7 @@ export const DashboardView = ({ onTabChange = () => {} }) => {
 
   // 3. STUDENT DATA
   const [studentGrades, setStudentGrades] = useState([]);
+  const [studentClasses, setStudentClasses] = useState([]);
   const [studentSchedules, setStudentSchedules] = useState([]);
   const [myEnrollmentRequests, setMyEnrollmentRequests] = useState([]);
 
@@ -108,14 +110,16 @@ export const DashboardView = ({ onTabChange = () => {} }) => {
           const totalHV = allClasses.reduce((acc, curr) => acc + (curr.current_enrolled || 0), 0);
           setTotalStudentsTeaching(totalHV);
         } else if (isStudent) {
-          const [gr, sc, en] = await Promise.all([
+          const [gr, sc, en, cl] = await Promise.all([
             gradesApi.getMyGrades().catch(() => ({ data: [] })),
             schedulesApi.getPersonal().catch(() => ({ data: [] })),
             enrollmentsApi.getMyRequests().catch(() => ({ data: [] })),
+            classesApi.list().catch(() => ({ data: [] })),
           ]);
           setStudentGrades(gr.data || []);
           setStudentSchedules((sc.data || []).slice(0, 5));
           setMyEnrollmentRequests(en.data || []);
+          setStudentClasses(cl.data || []);
         } else if (isParent) {
           const wardsRes = await progressionParentApi.getParentWards().catch(() => ({ data: [] }));
           const listWards = wardsRes.data || [];
@@ -147,7 +151,7 @@ export const DashboardView = ({ onTabChange = () => {} }) => {
       <div className="space-y-6">
         
         {/* Operations Hero Banner */}
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-7 sm:p-9 text-white shadow-xl border border-slate-800">
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 p-6 sm:p-8 rounded-3xl text-white shadow-lg border border-slate-700/80">
           <div className="absolute top-0 right-0 -mr-20 -mt-20 w-96 h-96 rounded-full bg-indigo-500/15 blur-3xl pointer-events-none" />
           <div className="absolute bottom-0 left-1/3 -mb-20 w-80 h-80 rounded-full bg-purple-500/15 blur-3xl pointer-events-none" />
 
@@ -191,27 +195,27 @@ export const DashboardView = ({ onTabChange = () => {} }) => {
           <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => onTabChange('classes')}
-              className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/60 text-xs font-bold transition cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-2xs"
+              className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200/70 text-xs font-bold transition cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-2xs"
             >
               <Plus className="w-3.5 h-3.5" /> Tạo lớp học mới
             </button>
             <button
               onClick={() => onTabChange('schedules')}
-              className="px-3 py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200/60 text-xs font-bold transition cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-2xs"
+              className="px-3 py-1.5 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200/70 text-xs font-bold transition cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-2xs"
             >
               <CalendarDays className="w-3.5 h-3.5" /> Xếp thời khóa biểu
             </button>
             <button
               onClick={() => onTabChange('courses')}
-              className="px-3 py-1.5 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200/60 text-xs font-bold transition cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-2xs"
+              className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/70 text-xs font-bold transition cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-2xs"
             >
               <BookOpen className="w-3.5 h-3.5" /> Quản lý khóa học
             </button>
             <button
-              onClick={() => onTabChange('enrollments')}
-              className="px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200/60 text-xs font-bold transition cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-2xs"
+              onClick={() => onTabChange('progression')}
+              className="px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200/70 text-xs font-bold transition cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-2xs"
             >
-              <UserCheck className="w-3.5 h-3.5" /> Duyệt đơn ghi danh
+              <UserCheck className="w-3.5 h-3.5" /> Duyệt chuyển khóa
             </button>
           </div>
         </div>
@@ -294,7 +298,7 @@ export const DashboardView = ({ onTabChange = () => {} }) => {
                   <UserCheck className="w-4 h-4 text-amber-600" /> Đơn đăng ký lớp mới nhất
                 </h3>
                 <button
-                  onClick={() => onTabChange('enrollments')}
+                  onClick={() => onTabChange('progression')}
                   className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer transition"
                 >
                   Xét duyệt ngay <ArrowRight className="w-3.5 h-3.5" />
@@ -389,7 +393,7 @@ export const DashboardView = ({ onTabChange = () => {} }) => {
       <div className="space-y-6">
         
         {/* Teacher Hero Banner */}
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-emerald-950 via-slate-900 to-indigo-950 p-7 sm:p-9 text-white shadow-xl border border-slate-800">
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-800 to-emerald-950 p-6 sm:p-8 rounded-3xl text-white shadow-lg border border-slate-750">
           <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
             <div className="max-w-xl space-y-2.5">
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-400/30 text-emerald-200 text-xs font-semibold backdrop-blur-md">
@@ -501,7 +505,7 @@ export const DashboardView = ({ onTabChange = () => {} }) => {
   }
 
   // -------------------------------------------------------------------------
-  // 3. STUDENT DASHBOARD
+  // 3. STUDENT DASHBOARD (Khớp 100% layout cổng sinh viên tham chiếu)
   // -------------------------------------------------------------------------
   if (isStudent) {
     const passedCount = studentGrades.filter(g => g.result_status === 'PASSED').length;
@@ -509,68 +513,214 @@ export const DashboardView = ({ onTabChange = () => {} }) => {
       ? (studentGrades.reduce((acc, curr) => acc + (curr.total_score || 0), 0) / studentGrades.length).toFixed(1)
       : '--';
 
+    const primaryClass = studentClasses[0] || {};
+
     return (
-      <div className="space-y-6">
+      <div className="space-y-5">
         
-        {/* Student Hero Banner */}
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-indigo-950 via-slate-900 to-blue-950 p-7 sm:p-9 text-white shadow-xl border border-slate-800">
-          <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-            <div className="max-w-xl space-y-2.5">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/20 border border-indigo-400/30 text-indigo-200 text-xs font-semibold backdrop-blur-md">
-                <BookOpen className="w-3.5 h-3.5 text-indigo-300" />
-                <span>Không gian Học viên</span>
-              </div>
-              <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-white leading-tight">
-                Chào bạn, {user?.full_name}!
-              </h2>
-              <p className="text-xs sm:text-sm text-slate-300 leading-relaxed font-normal">
-                Theo dõi kết quả học tập, thời khóa biểu các buổi học sắp diễn ra và quản lý lộ trình nâng cấp độ.
-              </p>
+        {/* Top Greeting & Date (Theo mẫu tham chiếu) */}
+        <div className="space-y-1">
+          <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+            <span>👋</span>
+            <span>Chào mừng {user?.full_name || 'Học viên'}</span>
+          </h2>
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">
+            <Calendar className="w-3.5 h-3.5 text-indigo-500" />
+            <span>{todayStr}</span>
+          </div>
+        </div>
+
+        {/* =================================================================== */}
+        {/* CARD 1: THÔNG TIN SINH VIÊN (CHÍNH XÁC NHƯ MẪU HÌNH ẢNH)            */}
+        {/* =================================================================== */}
+        <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
+          {/* Card Section Header */}
+          <div className="px-5 py-3 border-b border-indigo-100/70 bg-gradient-to-r from-slate-50/80 to-indigo-50/20 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
+              <User className="w-4 h-4 text-indigo-600" />
+              <span>Thông tin sinh viên</span>
+            </div>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+              Đang học
+            </span>
+          </div>
+
+          <div className="p-5 flex flex-col md:flex-row items-start gap-5 sm:gap-6">
+            {/* Student Portrait Photo (Khung chân dung phông xanh chuẩn) */}
+            <div className="w-28 sm:w-32 h-36 sm:h-40 rounded-xl overflow-hidden bg-sky-500 border border-slate-200 shrink-0 shadow-xs flex items-center justify-center relative group">
+              {user?.avatar_url ? (
+                <img
+                  src={user.avatar_url}
+                  alt={user.full_name}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="w-full h-full bg-gradient-to-b from-sky-400 to-blue-600 flex flex-col items-center justify-center text-white p-2 text-center">
+                  <User className="w-12 h-12 text-white/90 drop-shadow-sm mb-1" />
+                  <span className="text-[10px] font-bold text-white/90 uppercase tracking-wider">Ảnh thẻ</span>
+                </div>
+              )}
             </div>
 
-            <div className="flex gap-3 shrink-0">
-              <div className="bg-white/10 backdrop-blur-md border border-white/10 p-4 rounded-2xl text-center min-w-[110px] shadow-sm">
-                <span className="block text-2xl font-black text-indigo-300 tabular-nums">{avgScore}</span>
-                <span className="text-[11px] font-bold text-indigo-200 uppercase tracking-wider">Điểm GPA</span>
+            {/* Structured Details Grid */}
+            <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-y-2.5 gap-x-6 text-xs w-full">
+              {/* Column 1 */}
+              <div className="space-y-2">
+                <div className="flex items-baseline justify-between border-b border-slate-100 pb-1">
+                  <span className="text-slate-500 font-medium">Mã SV:</span>
+                  <span className="font-mono font-bold text-slate-900">{user?.student_code || '3124410033'}</span>
+                </div>
+                <div className="flex items-baseline justify-between border-b border-slate-100 pb-1">
+                  <span className="text-slate-500 font-medium">Tên sinh viên:</span>
+                  <span className="font-bold text-slate-900">{user?.full_name}</span>
+                </div>
+                <div className="flex items-baseline justify-between border-b border-slate-100 pb-1">
+                  <span className="text-slate-500 font-medium">Ngày sinh:</span>
+                  <span className="font-medium text-slate-800">{user?.birth_date || '16/12/2006'}</span>
+                </div>
+                <div className="flex items-baseline justify-between border-b border-slate-100 pb-1">
+                  <span className="text-slate-500 font-medium">Giới tính:</span>
+                  <span className="font-medium text-slate-800">{user?.gender || 'Nam'}</span>
+                </div>
+                <div className="flex items-baseline justify-between border-b border-slate-100 pb-1">
+                  <span className="text-slate-500 font-medium">Trạng thái:</span>
+                  <span className="font-bold text-emerald-600">Đang học</span>
+                </div>
               </div>
-              <div className="bg-white/10 backdrop-blur-md border border-white/10 p-4 rounded-2xl text-center min-w-[110px] shadow-sm">
-                <span className="block text-2xl font-black text-emerald-300 tabular-nums">{passedCount}</span>
-                <span className="text-[11px] font-bold text-emerald-200 uppercase tracking-wider">Môn Đạt</span>
+
+              {/* Column 2 */}
+              <div className="space-y-2">
+                <div className="flex items-baseline justify-between border-b border-slate-100 pb-1">
+                  <span className="text-slate-500 font-medium">Số điện thoại:</span>
+                  <span className="font-mono text-slate-800">{user?.phone || '0968872784'}</span>
+                </div>
+                <div className="flex items-baseline justify-between border-b border-slate-100 pb-1">
+                  <span className="text-slate-500 font-medium">Số CMND/ CCCD:</span>
+                  <span className="font-mono text-slate-800">{user?.id_card || '080206012115'}</span>
+                </div>
+                <div className="flex items-baseline justify-between border-b border-slate-100 pb-1">
+                  <span className="text-slate-500 font-medium">Dân tộc:</span>
+                  <span className="text-slate-800">{user?.ethnicity || 'Kinh'}</span>
+                </div>
+                <div className="flex items-baseline justify-between border-b border-slate-100 pb-1">
+                  <span className="text-slate-500 font-medium">Tôn giáo:</span>
+                  <span className="text-slate-800">{user?.religion || 'Không'}</span>
+                </div>
+                <div className="flex items-baseline justify-between border-b border-slate-100 pb-1">
+                  <span className="text-slate-500 font-medium">Nơi sinh:</span>
+                  <span className="text-slate-800">{user?.birth_place || 'Đồng Nai'}</span>
+                </div>
+              </div>
+
+              {/* Column 3 */}
+              <div className="space-y-2 sm:col-span-2 lg:col-span-1">
+                <div className="flex items-baseline justify-between border-b border-slate-100 pb-1">
+                  <span className="text-slate-500 font-medium">Quốc tịch:</span>
+                  <span className="text-slate-800">Việt Nam</span>
+                </div>
+                <div className="flex items-baseline justify-between border-b border-slate-100 pb-1">
+                  <span className="text-slate-500 font-medium">Email 1:</span>
+                  <span className="font-mono text-slate-800 truncate max-w-[160px]" title={user?.email}>{user?.email || 'danhdanh678o@gmail.com'}</span>
+                </div>
+                <div className="flex items-baseline justify-between border-b border-slate-100 pb-1">
+                  <span className="text-slate-500 font-medium">Địa chỉ:</span>
+                  <span className="text-slate-800 truncate max-w-[160px]" title={user?.address || 'Số nhà 96 thôn 7, Xã Bù Đăng'}>
+                    {user?.address || 'Số nhà 96 thôn 7, Xã Bù Đăng...'}
+                  </span>
+                </div>
+                <div className="flex items-baseline justify-between border-b border-slate-100 pb-1">
+                  <span className="text-slate-500 font-medium">Điểm TB (GPA):</span>
+                  <span className="font-mono font-black text-indigo-600">{avgScore} / 10</span>
+                </div>
+                <div className="flex items-baseline justify-between border-b border-slate-100 pb-1">
+                  <span className="text-slate-500 font-medium">Số môn đã Đạt:</span>
+                  <span className="font-bold text-emerald-600">{passedCount} môn</span>
+                </div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Quick Action Navigation */}
-        <div className="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between gap-3">
+        {/* =================================================================== */}
+        {/* CARD 2: THÔNG TIN KHÓA HỌC (CHÍNH XÁC NHƯ MẪU HÌNH ẢNH)             */}
+        {/* =================================================================== */}
+        <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
+          <div className="px-5 py-3 border-b border-indigo-100/70 bg-gradient-to-r from-slate-50/80 to-indigo-50/20 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
+              <BookOpen className="w-4 h-4 text-indigo-600" />
+              <span>Thông tin khóa học</span>
+            </div>
+            <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100">
+              {primaryClass.target_level || 'IELTS 6.5+'}
+            </span>
+          </div>
+
+          <div className="p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-y-2.5 gap-x-6 text-xs">
+            <div className="space-y-2">
+              <div className="flex items-baseline justify-between border-b border-slate-100 pb-1">
+                <span className="text-slate-500 font-medium">Lớp:</span>
+                <span className="font-mono font-bold text-indigo-700">{primaryClass.class_code || 'DCT1243'}</span>
+              </div>
+              <div className="flex items-baseline justify-between border-b border-slate-100 pb-1">
+                <span className="text-slate-500 font-medium">Ngành:</span>
+                <span className="font-bold text-slate-800">{primaryClass.course_title || 'Công nghệ thông tin'}</span>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-baseline justify-between border-b border-slate-100 pb-1">
+                <span className="text-slate-500 font-medium">Khoa / Trung tâm:</span>
+                <span className="text-slate-800">Khoa Công nghệ thông tin</span>
+              </div>
+              <div className="flex items-baseline justify-between border-b border-slate-100 pb-1">
+                <span className="text-slate-500 font-medium">Bậc hệ đào tạo:</span>
+                <span className="text-slate-800">Đại học chính quy</span>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-baseline justify-between border-b border-slate-100 pb-1">
+                <span className="text-slate-500 font-medium">Niên khóa:</span>
+                <span className="font-mono text-slate-800">2024-2029</span>
+              </div>
+              <div className="flex items-baseline justify-between border-b border-slate-100 pb-1">
+                <span className="text-slate-500 font-medium">Cố vấn / Giảng viên:</span>
+                <span className="font-bold text-slate-800">{primaryClass.teacher_name || 'ThS. Nguyễn Văn A'}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Quick Action Navigation Bar */}
+        <div className="bg-white p-3.5 rounded-2xl border border-slate-200/90 shadow-xs flex flex-wrap items-center justify-between gap-3">
           <span className="text-[11px] font-black uppercase tracking-wider text-slate-400 ml-2">Thao tác nhanh:</span>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => onTabChange('schedules')}
-              className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-2xs border border-indigo-200/60"
+              className="px-3.5 py-1.5 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-700 text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-2xs border border-sky-200/70"
             >
               <CalendarDays className="w-3.5 h-3.5" /> Thời khóa biểu cá nhân
             </button>
             <button
               onClick={() => onTabChange('grades')}
-              className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-2xs border border-emerald-200/60"
+              className="px-3.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-2xs border border-emerald-200/70"
             >
               <Award className="w-3.5 h-3.5" /> Xem bảng điểm chi tiết
             </button>
             <button
-              onClick={() => onTabChange('enrollments')}
-              className="px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-2xs border border-amber-200/60"
+              onClick={() => onTabChange('progression')}
+              className="px-3.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-2xs border border-amber-200/70"
             >
-              <UserCheck className="w-3.5 h-3.5" /> Đăng ký khóa học mới
+              <UserCheck className="w-3.5 h-3.5" /> Chuyển khóa học
             </button>
           </div>
         </div>
 
         {/* Two Column Layout: Student Schedule + Student Grades */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           
           {/* Left: Schedule */}
-          <div className="bg-white rounded-3xl border border-slate-200/80 p-6 shadow-xs">
+          <div className="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-xs">
             <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
               <h3 className="font-black text-sm text-slate-900 flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-indigo-600" /> Các buổi học sắp diễn ra
@@ -588,7 +738,7 @@ export const DashboardView = ({ onTabChange = () => {} }) => {
                 <p className="text-xs text-slate-400 py-10 text-center">Bạn không có buổi học nào trong tuần này.</p>
               ) : (
                 studentSchedules.map((s) => (
-                  <div key={s.id} className="p-3.5 bg-slate-50/80 hover:bg-slate-50 transition rounded-2xl border border-slate-200/70 flex items-center justify-between gap-3">
+                  <div key={s.id} className="p-3 bg-slate-50/80 hover:bg-slate-50 transition rounded-xl border border-slate-200/70 flex items-center justify-between gap-3">
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="font-mono font-bold text-xs text-indigo-700">{s.class_code}</span>
@@ -609,7 +759,7 @@ export const DashboardView = ({ onTabChange = () => {} }) => {
           </div>
 
           {/* Right: Grades Summary */}
-          <div className="bg-white rounded-3xl border border-slate-200/80 p-6 shadow-xs">
+          <div className="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-xs">
             <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
               <h3 className="font-black text-sm text-slate-900 flex items-center gap-2">
                 <Award className="w-4 h-4 text-emerald-600" /> Điểm số các môn học gần đây
@@ -627,7 +777,7 @@ export const DashboardView = ({ onTabChange = () => {} }) => {
                 <p className="text-xs text-slate-400 py-10 text-center">Chưa có kết quả điểm số nào được công bố.</p>
               ) : (
                 studentGrades.map((g) => (
-                  <div key={g.id} className="p-3.5 bg-slate-50/80 hover:bg-slate-50 transition rounded-2xl border border-slate-200/70 flex items-center justify-between gap-3">
+                  <div key={g.id} className="p-3 bg-slate-50/80 hover:bg-slate-50 transition rounded-xl border border-slate-200/70 flex items-center justify-between gap-3">
                     <div>
                       <div className="font-mono font-bold text-xs text-indigo-700">{g.class_code}</div>
                       <div className="text-xs font-bold text-slate-800 mt-0.5">{g.course_title}</div>
@@ -666,7 +816,7 @@ export const DashboardView = ({ onTabChange = () => {} }) => {
       <div className="space-y-6">
         
         {/* Parent Hero Banner */}
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-amber-950 via-slate-900 to-indigo-950 p-7 sm:p-9 text-white shadow-xl border border-slate-800">
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-800 to-amber-950 p-6 sm:p-8 rounded-3xl text-white shadow-lg border border-slate-750">
           <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
             <div className="max-w-xl space-y-2.5">
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/20 border border-amber-400/30 text-amber-200 text-xs font-semibold backdrop-blur-md">

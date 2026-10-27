@@ -32,6 +32,9 @@ Tài liệu này lưu trữ các **Knowledge Items (KIs)** — các bài học k
 - **KI-23:** Kiến Trúc Cuộn Độc Lập (Independent Dual-Scroll Shell) & Giải Quyết Bẫy CSS backdrop-filter Với React Portal
 - **KI-24:** Ngăn Chặn Hiện Tượng Unmount Mất Dữ Liệu Form Do Trạng Thái Loading Toàn Cục (Authentication Loading vs Form Submission State)
 - **KI-25:** Thiết Kế Bảng Dữ Liệu Chuẩn SaaS (SaaS-Grade Ledger UI Pattern) & Phòng Tránh Bẫy Runtime Missing Icon Imports
+- **KI-26:** Triệt Tiêu Hộp Thoại Chặn UI Thread Bằng Promise-Based SaaS Confirm Dialog & Tích Hợp Command Palette (Ctrl+K)
+- **KI-27:** Tối Ưu Hóa Nghiệp Vụ Tinh Gọn, Cô Lập Quyền Riêng Tư Học Viên & Tự Động Hóa Phát Hiện Xung Đột (Lean UX, Data Privacy & Real-time Auto-Validation)
+- **KI-28:** Hợp Nhất Phân Hệ Chuyển Khóa Học & Lộ Trình Đào Tạo Thành Điểm Quản Trị Duy Nhất (Unified Course Transfer & Progression Architecture)
 
 ---
 
@@ -510,3 +513,69 @@ Tài liệu này lưu trữ các **Knowledge Items (KIs)** — các bài học k
   - **Bài học & Biện pháp phòng vệ:**
     - Luôn chạy script kiểm tra đối chiếu tự động giữa toàn bộ JSX component tags trong mã nguồn và danh sách `imports` đã khai báo trước khi đẩy code lên môi trường chính thức.
     - Bổ sung tùy chọn an toàn (Fallback Option) trong các thẻ `<select>` khi danh sách lớp hoặc phòng học rỗng (`-- Không có lớp học nào --`) để tránh lỗi render selector trống.
+
+---
+
+### [KI-26] Triệt Tiêu Hộp Thoại Chặn UI Thread Bằng Promise-Based SaaS Confirm Dialog & Tích Hợp Command Palette (Ctrl+K)
+- **Bối cảnh nghiệp vụ:**
+  - Trong các ứng dụng web truyền thống, việc sử dụng `window.confirm()` gây chặn UI thread (Synchronous blocking), làm giảm trải nghiệm người dùng, hiển thị hộp thoại thô sơ của trình duyệt/hệ điều hành, và có thể bị người dùng vô tình nhấn "Chặn hiển thị hộp thoại trên trang này".
+  - Người dùng cấp quản trị và học vụ thao tác với 11 phân hệ phức tạp gặp trở ngại khi phải di chuột tìm kiếm menu chức năng.
+- **Giải pháp Kiến trúc & Kỹ thuật:**
+  1. *Hệ thống Xác thực Hành động Bất đồng bộ (`ConfirmDialogContext`):*
+     - Cung cấp hook `useConfirm()` trả về `Promise<boolean>`.
+     - Cho phép viết code theo phong cách `async/await` mượt mà không làm vỡ luồng code tuần tự:
+       ```javascript
+       const isConfirmed = await confirm({
+         title: 'Xóa khóa học vĩnh viễn',
+         message: 'Bạn có chắc chắn muốn xóa khóa học này?',
+         confirmText: 'Xác nhận xóa',
+         cancelText: 'Hủy bỏ',
+         type: 'danger', // 'danger' | 'warning' | 'info'
+       });
+       if (!isConfirmed) return;
+       ```
+     - Modal được render trực tiếp vào `document.body` qua `createPortal`, có icon ngữ nghĩa (thùng rác đỏ, tam giác vàng, thông tin xanh), hiệu ứng zoom-in mượt mà, phím tắt `Esc` và click ngoài để hủy.
+  2. *Bộ Tìm kiếm & Nhảy Trang Nhanh (Command Palette `Ctrl + K`):*
+     - Hỗ trợ phím tắt toàn cục `Ctrl + K` / `Cmd + K` hoặc bấm thanh tìm kiếm trên Navbar.
+     - Lọc tự động các phân hệ khả dụng dựa trên vai trò của người dùng (`ADMIN`, `ACADEMIC_STAFF`, `TEACHER`, `STUDENT`, `PARENT`).
+     - Hỗ trợ bàn phím đầy đủ (`↑`, `↓`, `Enter`, `Esc`).
+     - Hiển thị mô tả nghiệp vụ và danh mục của từng phân hệ giúp người mới dễ dàng định hướng.
+
+
+---
+
+### [KI-27] Tối Ưu Hóa Nghiệp Vụ Tinh Gọn, Cô Lập Quyền Riêng Tư Học Viên & Tự Động Hóa Phát Hiện Xung Đột
+- **Bối cảnh nghiệp vụ:**
+  - Nhằm đơn giản hóa các thao tác dư thừa, tập trung vào nghiệp vụ thực tế của trung tâm ngoại ngữ và bảo vệ quyền riêng tư dữ liệu theo tiêu chuẩn giáo dục:
+    1. Giảng viên không được xem toàn bộ cơ sở dữ liệu học sinh của trung tâm mà chỉ tiếp cận danh sách học sinh theo từng lớp phụ trách.
+    2. Học sinh chỉ được xem danh sách thành viên của chính lớp mình đang học, tuyệt đối không được xem danh sách lớp của người khác.
+    3. Quy trình chuyển khóa học: học viên đăng ký chuyển lên khóa học cao hơn, hệ thống kiểm tra điều kiện chuẩn đầu ra khóa tiên quyết, Admin và Nhân viên học vụ xét duyệt.
+    4. Xếp lịch học: hệ thống tự động kiểm tra xung đột thời gian thực ngay khi nhập thông tin trong modal, loại bỏ thao tác kiểm tra thủ công dư thừa.
+    5. Quản lý tài khoản: bỏ tính năng Admin cấp lại mật khẩu thủ công; bổ sung nút tra cứu danh sách học sinh liên quan trực tiếp đến từng tài khoản theo vai trò (Phụ huynh -> con em; Giảng viên -> học viên trong lớp; Học viên -> hồ sơ cá nhân).
+    6. Trải nghiệm đăng nhập: triệt tiêu hiện tượng hiển thị 2 nút con mắt mật khẩu (xung đột CSS ::-ms-reveal trên trình duyệt Windows/Edge) và xóa bỏ dòng quên mật khẩu trùng lặp trong thẻ cảnh báo.
+    7. Tự động chuyển hướng về Bảng điều khiển ngay sau khi đăng nhập thành công.
+- **Giải pháp Kỹ thuật:**
+  - **CSS Browser Override:** Thêm input::-ms-reveal, input::-ms-clear { display: none !important; } để vô hiệu hóa nút con mắt mặc định của Windows/Edge.
+  - **Real-time Debounced Validation:** Dùng useEffect kiểm tra va chạm lịch học ngay trong modal ddForm / editForm với debounce 350ms, phản hồi tức thời cảnh báo xung đột phòng học hoặc giáo viên.
+  - **Privacy Guard in Roster Modal:** So khớp danh tính user.email / username / id trước khi mở danh sách thành viên lớp học (
+osterStudents) đối với vai trò STUDENT.
+  - **Endpoint GET /accounts/{user_id}/related-students:** Truy vấn quan hệ đa hình linh hoạt theo vai trò tài khoản (ParentStudent, ClassStudent, Student).
+
+
+---
+
+### [KI-28] Hợp Nhất Phân Hệ Chuyển Khóa Học & Lộ Trình Đào Tạo Thành Điểm Quản Trị Duy Nhất (Unified Course Transfer & Progression Architecture)
+- **Bối cảnh nghiệp vụ:** Ban đầu, hệ thống tồn tại 2 phân hệ riêng rẽ: *"Đăng ký & Xét duyệt"* (`enrollments`) và *"Lộ trình & Phụ huynh"* (`progression`). Điều này gây ra sự phân mảnh luồng nghiệp vụ khi học viên và học vụ vừa phải theo dõi đơn chuyển lớp ở một nơi, vừa phải kiểm tra điều kiện chuẩn đầu ra tiên quyết ở một nơi khác.
+- **Giải pháp thiết kế:**
+  1. Hợp nhất hai phân hệ thành một menu duy nhất mang tên **"Chuyển khóa học"** (`id: 'progression'`), loại bỏ tab `enrollments` khỏi thanh bên (Sidebar).
+  2. Xây dựng cấu trúc Sub-tab đa vai trò thích ứng bên trong `ProgressionParentView.jsx`:
+     - **Quản trị viên / Nhân viên học vụ:**
+       - *Tab 1: Yêu cầu chuyển khóa học:* Bảng thống kê toàn diện, bộ lọc trạng thái (Chờ duyệt, Đã duyệt, Từ chối, Đã hủy), tìm kiếm tức thì và các hành động phê duyệt (với Promise Confirm) / từ chối kèm lý do.
+       - *Tab 2: Thẩm định điều kiện tiên quyết:* Công cụ kiểm tra nhanh điểm số đạt chuẩn đầu ra (PASSED) của học viên trước khi cho phép nâng lên khóa học cấp độ tiếp theo.
+     - **Học viên:**
+       - *Tab 1: Lịch sử chuyển khóa:* Danh sách đơn chuyển khóa cá nhân, trạng thái duyệt và nút hủy đơn khi còn chờ duyệt.
+       - *Tab 2: Lớp mở chuyển khóa:* Danh sách các lớp học đang mở tuyển sinh của các khóa học cao hơn để học viên chọn và gửi yêu cầu.
+     - **Phụ huynh:**
+       - *Tab 1: Lộ trình của con:* Thẻ học viên con em, điểm trung bình GPA và trạng thái học vụ.
+       - *Tab 2: Lịch sử chuyển khóa của con:* Theo dõi toàn bộ quá trình xin chuyển khóa của con.
+  3. Đảm bảo tính tương thích ngược hoàn hảo: Điều hướng trong `App.jsx` và các nút phím tắt trên Dashboard đều chuyển hướng mượt mà về tab `progression`.

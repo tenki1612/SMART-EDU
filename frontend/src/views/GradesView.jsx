@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom';
 import { UserAvatar } from '../components/common/UserAvatar';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmDialogContext';
+import { useHeaderSlot } from '../context/HeaderSlotContext';
 import { gradesApi, classesApi, studentsApi, progressionParentApi } from '../services/api';
 import {
   CheckCircle2,
@@ -29,10 +31,12 @@ import {
 export const GradesView = () => {
   const { user } = useAuth();
   const toast = useToast();
+  const confirm = useConfirm();
 
   const isTeacher = user?.role === 'TEACHER';
   const isAdminOrStaff = ['ADMIN', 'ACADEMIC_STAFF'].includes(user?.role || '');
   const isStudent = user?.role === 'STUDENT';
+  const headerSlot = useHeaderSlot();
   const isParent = user?.role === 'PARENT';
 
   // Classes & Grading Sheet (for Teacher, Admin, Staff)
@@ -206,7 +210,14 @@ export const GradesView = () => {
 
   // Admin & Staff officially confirm/lock grades
   const handleConfirmGrades = async () => {
-    if (!window.confirm('Bạn có chắc chắn muốn xác nhận kết quả học tập chính thức? Bảng điểm sẽ được khóa an toàn.')) return;
+    const isConfirmed = await confirm({
+      title: 'Xác nhận khóa bảng điểm chính thức',
+      message: 'Bạn có chắc chắn muốn xác nhận kết quả học tập chính thức? Bảng điểm sẽ được khóa an toàn, giáo viên không thể chỉnh sửa điểm sau khi đã xác nhận.',
+      confirmText: 'Lưu & Khóa điểm',
+      cancelText: 'Hủy bỏ',
+      type: 'warning',
+    });
+    if (!isConfirmed) return;
     try {
       await gradesApi.confirmGrades(selectedClassId);
       toast.success('Đã lưu & xác nhận bảng điểm chính thức thành công!');
@@ -218,7 +229,14 @@ export const GradesView = () => {
 
   // Unlock grades
   const handleUnlockGrades = async () => {
-    if (!window.confirm('Mở khóa bảng điểm để giảng viên có thể cập nhật điểm số?')) return;
+    const isConfirmed = await confirm({
+      title: 'Mở khóa bảng điểm',
+      message: 'Mở khóa bảng điểm để giảng viên phụ trách có thể cập nhật hoặc điều chỉnh điểm số học viên?',
+      confirmText: 'Mở khóa',
+      cancelText: 'Giữ khóa',
+      type: 'info',
+    });
+    if (!isConfirmed) return;
     try {
       await gradesApi.unlockGrades(selectedClassId);
       toast.success('Đã mở khóa bảng điểm thành công!');
@@ -230,7 +248,14 @@ export const GradesView = () => {
 
   // Delete student from grade sheet
   const handleDeleteStudent = async (studentId, studentName) => {
-    if (!window.confirm(`Bạn có chắc chắn muốn XÓA điểm và gỡ học viên "${studentName}" khỏi lớp?`)) return;
+    const isConfirmed = await confirm({
+      title: 'Xóa học viên khỏi bảng điểm',
+      message: `Bạn có chắc chắn muốn XÓA điểm và gỡ học viên "${studentName}" khỏi lớp học này?`,
+      confirmText: 'Xác nhận xóa',
+      cancelText: 'Hủy bỏ',
+      type: 'danger',
+    });
+    if (!isConfirmed) return;
     try {
       await gradesApi.deleteStudentFromGradeSheet(selectedClassId, studentId);
       toast.success(`Đã xóa học viên ${studentName} khỏi bảng điểm thành công!`);
@@ -281,22 +306,6 @@ export const GradesView = () => {
 
     return (
       <div className="space-y-6">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h2 className="text-xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-              <Award className="w-5 h-5 text-indigo-600" />
-              Bảng điểm & Kết quả Học tập Cá nhân
-            </h2>
-            <p className="text-xs text-slate-500 mt-1">
-              Hệ thống điểm học tập cá nhân bảo mật của học viên <strong className="text-slate-800">{user?.full_name}</strong>.
-            </p>
-          </div>
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-            <UserCheck className="w-3.5 h-3.5" /> Học viên: {user?.full_name}
-          </span>
-        </div>
-
         {/* Quick KPI summary */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs">
@@ -407,22 +416,6 @@ export const GradesView = () => {
 
     return (
       <div className="space-y-6">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h2 className="text-xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-              <Award className="w-5 h-5 text-indigo-600" />
-              Bảng điểm & Đánh giá Kết quả Học tập của Con
-            </h2>
-            <p className="text-xs text-slate-500 mt-1">
-              Phụ huynh chỉ theo dõi điểm số và tiến độ của học viên được giám hộ hợp pháp.
-            </p>
-          </div>
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200">
-            <UserCheck className="w-3.5 h-3.5" /> Phụ huynh: {user?.full_name}
-          </span>
-        </div>
-
         {/* Ward Selector if multiple children */}
         {wards.length > 1 && (
           <div className="flex items-center gap-2 bg-white p-2 rounded-2xl border border-slate-200 shadow-2xs">
@@ -567,80 +560,51 @@ export const GradesView = () => {
   // -------------------------------------------------------------
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-            <FileSpreadsheet className="w-5 h-5 text-indigo-600" />
-            {isTeacher
-              ? 'Sổ Nhập Điểm & Đánh Giá Học Viên (Giảng Viên)'
-              : 'Quản Lý & Phê Duyệt Bảng Điểm Lớp Học (Admin / Học Vụ)'}
-          </h2>
-          <p className="text-xs text-slate-500 mt-1">
-            {isTeacher
-              ? 'Giảng viên chấm điểm chuyên cần, giữa kỳ, cuối kỳ. Điểm được lưu nháp và tự động tổng hợp kết quả.'
-              : 'Quản trị viên và Học vụ có thẩm quyền lưu xác nhận điểm chính thức và xóa điểm học viên khỏi lớp.'}
-          </p>
-        </div>
-
-        {/* Role action buttons */}
+      {/* Header Slot Action Buttons */}
+      {headerSlot && (isTeacher || isAdminOrStaff) && createPortal(
         <div className="flex items-center gap-2">
-          {/* Teacher Action: Lưu bảng điểm */}
           {isTeacher && !isSheetLocked && (
             <button
+              type="button"
               onClick={handleSaveGrades}
-              className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-sm shadow-indigo-200 transition cursor-pointer"
+              className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow-xs shadow-indigo-200 transition cursor-pointer"
             >
-              <Save className="w-4 h-4" /> Lưu bảng điểm
+              <Save className="w-3.5 h-3.5" /> <span>Lưu điểm</span>
             </button>
           )}
-
-          {/* Admin / Staff Action: Lưu & Xác nhận điểm chính thức */}
           {isAdminOrStaff && !isSheetLocked && gradingSheet.length > 0 && (
             <button
+              type="button"
               onClick={handleConfirmGrades}
-              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-sm shadow-emerald-200 transition cursor-pointer"
+              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow-xs shadow-emerald-200 transition cursor-pointer"
             >
-              <CheckCircle2 className="w-4 h-4" /> Lưu & Khóa điểm chính thức
+              <CheckCircle2 className="w-3.5 h-3.5" /> <span>Khóa điểm</span>
             </button>
           )}
-
-          {/* Unlock action if sheet is locked */}
           {isSheetLocked && (
             <button
+              type="button"
               onClick={handleUnlockGrades}
-              className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-sm shadow-amber-200 transition cursor-pointer"
+              className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow-xs shadow-amber-200 transition cursor-pointer"
             >
-              <Unlock className="w-4 h-4" /> Mở khóa bảng điểm
+              <Unlock className="w-3.5 h-3.5" /> <span>Mở khóa điểm</span>
             </button>
           )}
-
-          {/* Thêm học viên vào bảng điểm */}
-          <button
-            onClick={() => setIsAddModalOpen(true)}
-            className="flex items-center gap-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-3.5 py-2 rounded-xl text-xs font-bold shadow-2xs transition cursor-pointer"
-          >
-            <UserPlus className="w-4 h-4 text-indigo-600" /> Thêm học viên
-          </button>
-        </div>
-      </div>
-
-      {/* Special Notice Banner for Admin / Staff according to Requirement 1 */}
-      {isAdminOrStaff && (
-        <div className="p-4 bg-amber-50/80 border border-amber-200/90 rounded-2xl flex items-start gap-3 text-xs text-amber-900 shadow-2xs">
-          <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-          <div className="space-y-0.5">
-            <span className="font-extrabold text-sm block">Quy tắc Phân quyền Nhập Điểm:</span>
-            <p className="leading-relaxed">
-              Điểm số chỉ có <strong>Giảng viên phụ trách</strong> mới có quyền thay đổi và cập nhật số điểm. 
-              Nhân viên học vụ và Quản trị viên chỉ có quyền <strong>Lưu/Xác nhận kết quả chính thức (Khóa điểm)</strong> và <strong>Xóa điểm</strong> của học viên khỏi lớp.
-            </p>
-          </div>
-        </div>
+          {selectedClassId && (
+            <button
+              type="button"
+              onClick={() => setIsAddModalOpen(true)}
+              className="flex items-center gap-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-3 py-1.5 rounded-xl text-xs font-bold shadow-2xs transition cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" /> <span>Thêm điểm học viên</span>
+            </button>
+          )}
+        </div>,
+        headerSlot
       )}
 
-      {/* KPI Metric Overview Cards for Grading Sheet */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      {/* KPI Overview Grid */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
           <div>
             <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Sĩ số bảng điểm</span>

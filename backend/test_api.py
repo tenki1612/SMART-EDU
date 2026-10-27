@@ -28,7 +28,8 @@ def run_tests():
     print(f"✓ 3. Courses count: {len(courses)}: PASSED")
 
     # 4. Check schedule conflict detection
-    seeded_date = (date.today() + timedelta(days=2)).isoformat()
+    sched_list = client.get("/api/v1/schedules/", headers=headers).json().get("data", [])
+    seeded_date = sched_list[0]["session_date"] if sched_list else "2026-10-28"
     conflict_res = client.post("/api/v1/schedules/check-conflicts", json={
         "classroom_id": 1,
         "teacher_id": 1,
@@ -442,6 +443,48 @@ def run_tests():
     assert del_avatar_res.status_code == 200
     assert del_avatar_res.json()["data"]["avatar_url"] is None
     print("✓ 15.4. Remove Avatar & Reset: PASSED")
+
+    # ================= 16. RELATED STUDENTS BY ACCOUNT ROLE =================
+    # 16.1. Get related students for Parent
+    parent_related = client.get("/api/v1/accounts/5/related-students", headers=headers)
+    assert parent_related.status_code == 200
+    assert len(parent_related.json()["data"]) >= 1
+    print("✓ 16.1. Get Related Students for Parent: PASSED")
+
+    # 16.2. Get related students for Student
+    student_related = client.get("/api/v1/accounts/3/related-students", headers=headers)
+    assert student_related.status_code == 200
+    assert len(student_related.json()["data"]) >= 1
+    print("✓ 16.2. Get Related Students for Student: PASSED")
+
+    # ================= 17. STUDENT ISOLATION: CLASSES, COURSES & ROSTER PRIVACY =================
+    # 17.1. Student login
+    st_login = client.post("/api/v1/auth/login", json={"username": "student", "password": "student123"})
+    assert st_login.status_code == 200
+    st_token = st_login.json()["data"]["access_token"]
+    st_headers = {"Authorization": f"Bearer {st_token}"}
+
+    # 17.2. Student can only see classes they are enrolled in
+    st_classes = client.get("/api/v1/classes/", headers=st_headers)
+    assert st_classes.status_code == 200
+    st_cls_data = st_classes.json()["data"]
+    # Seeded student is enrolled in exactly 1 class (IELTS-65-K26A)
+    assert len(st_cls_data) == 1
+    assert st_cls_data[0]["class_code"] == "IELTS-65-K26A"
+    print("✓ 17.1. Student Class View Isolation: PASSED (Only enrolled classes returned)")
+
+    # 17.3. Student can only see courses they are taking
+    st_courses = client.get("/api/v1/courses/", headers=st_headers)
+    assert st_courses.status_code == 200
+    st_cou_data = st_courses.json()["data"]
+    assert len(st_cou_data) == 1
+    assert st_cou_data[0]["code"] == "IELTS-PREP-65"
+    print("✓ 17.2. Student Course View Isolation: PASSED (Only enrolled courses returned)")
+
+    # 17.4. Student forbidden from viewing class roster
+    st_roster = client.get("/api/v1/classes/1/students", headers=st_headers)
+    assert st_roster.status_code == 403
+    print("✓ 17.3. Student Class Roster Blocked: PASSED (403 Forbidden)")
 
     print("\n🎉 ALL BACKEND INTEGRATION TESTS PASSED (100% SUCCESS)!")
 

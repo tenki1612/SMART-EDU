@@ -2,7 +2,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from app.core.database import get_db
-from app.core.permissions import require_roles, RoleEnum, get_current_user_payload
+from app.core.permissions import require_roles, RoleEnum, get_current_user_payload, get_optional_user_payload
 from app.common.response import ApiResponse
 from app.modules.courses.schemas import CourseCreate, CourseUpdate, CourseResponse
 from app.modules.courses.service import CourseService
@@ -32,9 +32,20 @@ def update_course(
 def list_courses(
     q: Optional[str] = Query(None, description="Tìm theo tên hoặc cấp độ mục tiêu"),
     only_active: bool = Query(False, description="Chỉ lấy khóa đang hoạt động"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    payload: Optional[dict] = Depends(get_optional_user_payload)
 ):
-    courses = CourseService.list_courses(db, query=q, only_active=only_active)
+    student_id = None
+    if payload and payload.get("role") == RoleEnum.STUDENT.value:
+        from app.modules.students.models import Student
+        user_id = int(payload.get("sub", 0)) if "sub" in payload else payload.get("user_id")
+        student = db.query(Student).filter(Student.user_id == user_id, Student.is_deleted == False).first()
+        if student:
+            student_id = student.id
+        else:
+            return ApiResponse(data=[], message="Học viên chưa có hồ sơ học tập")
+
+    courses = CourseService.list_courses(db, query=q, only_active=only_active, student_id=student_id)
     return ApiResponse(data=courses, message="Danh sách khóa học")
 
 @router.get("/{course_id}", response_model=ApiResponse[CourseResponse], summary="FR-14: Xem chi tiết khóa học")

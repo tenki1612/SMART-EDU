@@ -39,8 +39,20 @@ class CourseService:
         return course
 
     @staticmethod
-    def list_courses(db: Session, query: Optional[str] = None, only_active: bool = False) -> List[Course]:
+    def list_courses(db: Session, query: Optional[str] = None, only_active: bool = False, student_id: Optional[int] = None) -> List[Course]:
         q = db.query(Course).filter(Course.is_deleted == False)
+        if student_id is not None:
+            from app.modules.classes.models import Class, ClassStudent
+            enrolled_course_ids = [
+                cls.course_id for cls in db.query(Class).join(
+                    ClassStudent, ClassStudent.class_id == Class.id
+                ).filter(
+                    ClassStudent.student_id == student_id,
+                    ClassStudent.is_deleted == False,
+                    Class.is_deleted == False
+                ).all()
+            ]
+            q = q.filter(Course.id.in_(enrolled_course_ids))
         if only_active:
             q = q.filter(Course.is_active == True)
         if query:

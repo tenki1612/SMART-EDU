@@ -1,6 +1,8 @@
 import React, { useEffect, useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmDialogContext';
 import { enrollmentsApi, classesApi } from '../services/api';
 import { UserAvatar } from '../components/common/UserAvatar';
 import {
@@ -23,6 +25,7 @@ import {
 export const EnrollmentsView = () => {
   const { user } = useAuth();
   const toast = useToast();
+  const confirm = useConfirm();
   const isStudent = user?.role === 'STUDENT';
   const isStaffOrAdmin = ['ADMIN', 'ACADEMIC_STAFF'].includes(user?.role || '');
 
@@ -64,7 +67,7 @@ export const EnrollmentsView = () => {
     if (!selectedClassToRegister) return;
     try {
       await enrollmentsApi.createRequest(selectedClassToRegister.id, registerNote);
-      toast.success('Đã gửi yêu cầu đăng ký lớp học thành công!');
+      toast.success('Đã gửi yêu cầu chuyển khóa học thành công! Vui lòng chờ Admin hoặc Học vụ phê duyệt.');
       setSelectedClassToRegister(null);
       setRegisterNote('');
       loadData();
@@ -74,10 +77,17 @@ export const EnrollmentsView = () => {
   };
 
   const handleApprove = async (id) => {
-    if (!window.confirm('Xác nhận duyệt yêu cầu đăng ký này và thêm học viên vào lớp?')) return;
+    const isConfirmed = await confirm({
+      title: 'Phê duyệt chuyển khóa học',
+      message: 'Xác nhận duyệt yêu cầu đăng ký này và ghi danh học viên vào lớp học?',
+      confirmText: 'Phê duyệt',
+      cancelText: 'Xem lại',
+      type: 'info',
+    });
+    if (!isConfirmed) return;
     try {
       await enrollmentsApi.approve(id);
-      toast.success('Đã duyệt đơn và thêm học viên vào lớp!');
+      toast.success('Đã duyệt chuyển khóa thành công và ghi danh học viên vào lớp mới!');
       loadData();
     } catch (e) {
       toast.error(e.message);
@@ -85,7 +95,14 @@ export const EnrollmentsView = () => {
   };
 
   const handleCancelRequest = async (id) => {
-    if (!window.confirm('Bạn có chắc chắn muốn hủy đơn đăng ký lớp học này không?')) return;
+    const isConfirmed = await confirm({
+      title: 'Hủy đơn đăng ký lớp',
+      message: 'Bạn có chắc chắn muốn hủy đơn đăng ký lớp học này không? Sau khi hủy, yêu cầu sẽ được chuyển sang trạng thái HỦY BỎ.',
+      confirmText: 'Xác nhận hủy',
+      cancelText: 'Giữ lại đơn',
+      type: 'warning',
+    });
+    if (!isConfirmed) return;
     try {
       await enrollmentsApi.cancelRequest(id);
       toast.success('Đã hủy yêu cầu đăng ký lớp học thành công!');
@@ -133,20 +150,7 @@ export const EnrollmentsView = () => {
   return (
     <div className="space-y-6">
       
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-2xl bg-indigo-50 border border-indigo-200/80 flex items-center justify-center text-indigo-600 shadow-2xs">
-              <FileCheck2 className="w-5 h-5" />
-            </div>
-            <span>Đăng Ký & Xét Duyệt Ghi Danh</span>
-          </h2>
-          <p className="text-xs text-slate-500 mt-1">
-            Quy trình tiếp nhận đơn ghi danh lớp học, kiểm tra điều kiện đầu vào, phê duyệt và tự động cập nhật sĩ số.
-          </p>
-        </div>
-      </div>
+
 
       {/* KPI Metric Overview */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
@@ -201,7 +205,7 @@ export const EnrollmentsView = () => {
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-2">
               <School className="w-4 h-4 text-indigo-600" />
-              <span>Các lớp học đang mở đăng ký ({openClasses.length})</span>
+              <span>Các khóa học & lớp đang mở chuyển khóa ({openClasses.length})</span>
             </h3>
           </div>
 
@@ -241,7 +245,7 @@ export const EnrollmentsView = () => {
                         : 'bg-indigo-600 hover:bg-indigo-700 text-white'
                     }`}
                   >
-                    {cls.is_full ? 'Hết chỗ' : 'Đăng ký ngay'}
+                    {cls.is_full ? 'Hết chỗ' : 'Đăng ký chuyển khóa'}
                   </button>
                 </div>
               </div>
@@ -466,7 +470,7 @@ export const EnrollmentsView = () => {
       </div>
 
       {/* ================= MODAL: XÁC NHẬN ĐĂNG KÝ HỌC VIÊN ================= */}
-      {selectedClassToRegister && (
+      {selectedClassToRegister && createPortal(
         <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl border border-slate-200 relative overflow-hidden">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
@@ -476,7 +480,7 @@ export const EnrollmentsView = () => {
                 </div>
                 <div>
                   <h3 className="text-base font-black text-slate-900">
-                    Đăng Ký Lớp: {selectedClassToRegister.class_code}
+                    Chuyển Khóa Học: {selectedClassToRegister.class_code}
                   </h3>
                   <span className="text-xs text-slate-400">{selectedClassToRegister.course_title}</span>
                 </div>
@@ -491,10 +495,14 @@ export const EnrollmentsView = () => {
             </div>
 
             <form onSubmit={handleRegister} className="space-y-4 text-xs">
-              <div className="bg-indigo-50/60 p-3.5 rounded-2xl border border-indigo-100 text-indigo-900 space-y-1">
-                <div className="font-bold">Khóa đào tạo: {selectedClassToRegister.course_title}</div>
+              <div className="bg-indigo-50/60 p-3.5 rounded-2xl border border-indigo-100 text-indigo-900 space-y-1.5">
+                <div className="font-bold">Khóa đào tạo đích: {selectedClassToRegister.course_title}</div>
                 <div className="text-[11px] text-indigo-700">Mục tiêu đầu ra: {selectedClassToRegister.target_level}</div>
                 <div className="text-[11px] text-slate-500">Giáo viên: {selectedClassToRegister.teacher_name || 'Đang phân công'}</div>
+                <div className="text-[11px] text-amber-900 bg-amber-50/80 p-2.5 rounded-xl border border-amber-200 mt-2">
+                  <span className="font-bold block">Điều kiện chuyển khóa:</span>
+                  <span>Học viên gửi yêu cầu lên khóa cao hơn. Hệ thống kiểm tra điều kiện chuẩn đầu ra và Ban Quản trị / Nhân viên học vụ sẽ xét duyệt.</span>
+                </div>
               </div>
 
               <div>
@@ -523,16 +531,17 @@ export const EnrollmentsView = () => {
                   className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-xs cursor-pointer flex items-center gap-1.5 active:scale-95"
                 >
                   <Send className="w-3.5 h-3.5" />
-                  <span>Xác nhận Gửi Đơn</span>
+                  <span>Gửi Yêu Cầu Chuyển Khóa</span>
                 </button>
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ================= MODAL: TỪ CHỐI ĐƠN ĐĂNG KÝ ================= */}
-      {rejectingRequestId && (
+      {rejectingRequestId && createPortal(
         <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl border border-slate-200 relative overflow-hidden">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
@@ -586,7 +595,8 @@ export const EnrollmentsView = () => {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
     </div>

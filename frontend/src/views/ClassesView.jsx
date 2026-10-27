@@ -1,6 +1,9 @@
 import React, { useEffect, useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmDialogContext';
+import { useHeaderSlot } from '../context/HeaderSlotContext';
 import { classesApi, teachersApi, coursesApi } from '../services/api';
 import { UserAvatar } from '../components/common/UserAvatar';
 import {
@@ -24,6 +27,8 @@ import {
 export const ClassesView = () => {
   const { user } = useAuth();
   const toast = useToast();
+  const confirm = useConfirm();
+  const headerSlot = useHeaderSlot();
   const canManage = ['ADMIN', 'ACADEMIC_STAFF'].includes(user?.role || '');
 
   const [classes, setClasses] = useState([]);
@@ -141,7 +146,14 @@ export const ClassesView = () => {
   };
 
   const handleDeleteClass = async (id, code) => {
-    if (!window.confirm(`Bạn có chắc chắn muốn XÓA vĩnh viễn lớp học ${code}?`)) return;
+    const isConfirmed = await confirm({
+      title: 'Xóa lớp học vĩnh viễn',
+      message: `Bạn có chắc chắn muốn XÓA vĩnh viễn lớp học ${code}? Toàn bộ dữ liệu điểm và phân công liên quan sẽ bị ảnh hưởng.`,
+      confirmText: 'Xác nhận xóa',
+      cancelText: 'Hủy bỏ',
+      type: 'danger',
+    });
+    if (!isConfirmed) return;
     try {
       await classesApi.delete(id);
       toast.success('Đã xóa lớp học thành công!');
@@ -172,9 +184,35 @@ export const ClassesView = () => {
   };
 
   const handleOpenRoster = async (cls) => {
+    if (user?.role === 'STUDENT') {
+      toast.warning('Học viên không có quyền xem danh sách học viên trong lớp học!');
+      return;
+    }
     try {
       const res = await classesApi.getRoster(cls.id);
-      setRosterStudents(res.data || []);
+      const studentList = res.data || [];
+
+      // Giáo viên chỉ được xem danh sách học viên lớp học của mình
+      if (user?.role === 'TEACHER') {
+        const currentTeacher = teachers.find(t => t.user_id === user.id || t.email === user.email);
+        const isMyClass = (currentTeacher && cls.teacher_id === currentTeacher.id) ||
+                          cls.teacher_id === user.id ||
+                          cls.teacher_name?.toLowerCase() === user.full_name?.toLowerCase();
+        if (!isMyClass) {
+          toast.warning(
+            `Bạn không phải là giảng viên phụ trách lớp ${cls.class_code}. Giảng viên chỉ được xem danh sách học viên lớp học của mình!`
+          );
+          return;
+        }
+      }
+
+      // Học viên không có quyền xem danh sách lớp học
+      if (user?.role === 'STUDENT') {
+        toast.warning('Học viên không có quyền xem danh sách học viên trong lớp học!');
+        return;
+      }
+
+      setRosterStudents(studentList);
       setSelectedClassRoster({ id: cls.id, code: cls.class_code });
     } catch (e) {
       toast.error('Lỗi khi tải danh sách học viên: ' + e.message);
@@ -195,7 +233,7 @@ export const ClassesView = () => {
       case 'OPEN_FOR_ENROLLMENT':
         return { label: 'Đang mở đăng ký', bg: 'bg-emerald-50 text-emerald-700 border-emerald-200/80', dot: 'bg-emerald-500' };
       case 'IN_PROGRESS':
-        return { label: 'Đang giảng dạy', bg: 'bg-sky-50 text-sky-700 border-sky-200/80', dot: 'bg-sky-500' };
+        return { label: 'Đang diễn ra', bg: 'bg-sky-50 text-sky-700 border-sky-200/80', dot: 'bg-sky-500' };
       case 'COMPLETED':
         return { label: 'Đã hoàn thành', bg: 'bg-purple-50 text-purple-700 border-purple-200/80', dot: 'bg-purple-500' };
       case 'CANCELLED':
@@ -208,39 +246,27 @@ export const ClassesView = () => {
   return (
     <div className="space-y-6">
       
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-2xl bg-indigo-50 border border-indigo-200/80 flex items-center justify-center text-indigo-600 shadow-2xs">
-              <School className="w-5 h-5" />
-            </div>
-            <span>Lớp Học & Quản Lý Sĩ Số</span>
-          </h2>
-          <p className="text-xs text-slate-500 mt-1">
-            Theo dõi sức chứa sĩ số, số hiện có, phân công giảng viên và trạng thái tuyển sinh lớp học.
-          </p>
-        </div>
-
-        {canManage && (
-          <button
-            type="button"
-            onClick={() => {
-              if (courses.length > 0) {
-                setNewClass((prev) => ({ ...prev, course_id: courses[0].id }));
-              }
-              setShowAddModal(true);
-            }}
-            className="flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-700 hover:to-indigo-600 active:scale-95 text-white px-4 py-2.5 rounded-2xl text-xs font-bold shadow-sm shadow-indigo-200 transition cursor-pointer shrink-0"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Thêm lớp học mới</span>
-          </button>
-        )}
-      </div>
+      {/* Top Header Action Button */}
+      {headerSlot && canManage && createPortal(
+        <button
+          type="button"
+          onClick={() => {
+            if (courses.length > 0) {
+              setNewClass((prev) => ({ ...prev, course_id: courses[0].id }));
+            }
+            setShowAddModal(true);
+          }}
+          className="flex items-center gap-1.5 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-700 hover:to-indigo-600 active:scale-95 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold shadow-xs shadow-indigo-200 transition cursor-pointer shrink-0"
+        >
+          <Plus className="w-4 h-4" />
+          <span>Thêm lớp học mới</span>
+        </button>,
+        headerSlot
+      )}
 
       {/* KPI Metric Overview */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
+      {user?.role !== 'STUDENT' && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
         <div className="bg-white p-4 sm:p-5 rounded-3xl border border-slate-200/90 shadow-2xs hover:border-indigo-200 hover:-translate-y-0.5 transition-all">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Tổng số lớp</span>
@@ -265,7 +291,7 @@ export const ClassesView = () => {
 
         <div className="bg-white p-4 sm:p-5 rounded-3xl border border-slate-200/90 shadow-2xs hover:border-sky-200 hover:-translate-y-0.5 transition-all">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Đang giảng dạy</span>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Đang diễn ra</span>
             <div className="w-8 h-8 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center">
               <BookOpen className="w-4 h-4" />
             </div>
@@ -285,6 +311,7 @@ export const ClassesView = () => {
           <div className="text-[11px] text-purple-700/80 mt-1 font-medium">Học viên đang theo học</div>
         </div>
       </div>
+      )}
 
       {/* Filter and Search Bar */}
       <div className="bg-white p-3.5 rounded-3xl border border-slate-200/90 shadow-2xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
@@ -312,12 +339,19 @@ export const ClassesView = () => {
 
         {/* Status Filter Chips */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 shrink-0">
-          {[
-            { id: '', label: 'Tất cả' },
-            { id: 'OPEN_FOR_ENROLLMENT', label: 'Đang mở' },
-            { id: 'IN_PROGRESS', label: 'Đang học' },
-            { id: 'COMPLETED', label: 'Đã xong' },
-          ].map((st) => {
+          {(user?.role === 'STUDENT'
+            ? [
+                { id: '', label: 'Tất cả' },
+                { id: 'IN_PROGRESS', label: 'Đang học' },
+                { id: 'COMPLETED', label: 'Đã xong' },
+              ]
+            : [
+                { id: '', label: 'Tất cả' },
+                { id: 'OPEN_FOR_ENROLLMENT', label: 'Đang mở' },
+                { id: 'IN_PROGRESS', label: 'Đang diễn ra' },
+                { id: 'COMPLETED', label: 'Đã xong' },
+              ]
+          ).map((st) => {
             const isSelected = statusFilter === st.id;
             return (
               <button
@@ -353,7 +387,7 @@ export const ClassesView = () => {
                 <th className="p-4">Tình trạng Sĩ số</th>
                 <th className="p-4">Giảng viên phụ trách</th>
                 <th className="p-4 text-center">Trạng thái lớp</th>
-                <th className="p-4 pr-5 text-right">Thao tác</th>
+                <th className="p-4 pr-5 text-right">{canManage ? 'Thao tác' : 'Trạng thái'}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -361,7 +395,9 @@ export const ClassesView = () => {
                 <tr>
                   <td colSpan={6} className="p-12 text-center text-slate-400 font-medium">
                     <School className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                    Không tìm thấy lớp học nào phù hợp.
+                    {user?.role === 'STUDENT' && !statusFilter && !searchTerm
+                      ? 'Bạn hiện chưa được ghi danh vào lớp học nào.'
+                      : 'Không tìm thấy lớp học nào phù hợp.'}
                   </td>
                 </tr>
               ) : (
@@ -451,7 +487,7 @@ export const ClassesView = () => {
                             className="border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 bg-white font-bold outline-hidden hover:border-slate-300 cursor-pointer shadow-2xs"
                           >
                             <option value="OPEN_FOR_ENROLLMENT">Đang mở đăng ký</option>
-                            <option value="IN_PROGRESS">Đang giảng dạy</option>
+                            <option value="IN_PROGRESS">Đang diễn ra</option>
                             <option value="COMPLETED">Đã hoàn thành</option>
                             <option value="CANCELLED">Đã hủy</option>
                           </select>
@@ -465,38 +501,38 @@ export const ClassesView = () => {
 
                       {/* Actions */}
                       <td className="p-4 pr-5 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => handleOpenRoster(cls)}
-                            className="inline-flex items-center gap-1.5 bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 font-bold px-3 py-1.5 rounded-xl transition cursor-pointer border border-slate-200/60 hover:border-indigo-200"
-                            title="Xem danh sách học viên trong lớp"
-                          >
-                            <Users className="w-3.5 h-3.5" />
-                            <span>DS Lớp</span>
-                          </button>
-
-                          {canManage && (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => handleOpenEdit(cls)}
-                                className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition cursor-pointer"
-                                title="Sửa thông tin lớp học"
-                              >
-                                <Edit2 className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteClass(cls.id, cls.class_code)}
-                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition cursor-pointer"
-                                title="Xóa lớp học"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </>
-                          )}
-                        </div>
+                        {canManage ? (
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEdit(cls)}
+                              className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition cursor-pointer"
+                              title="Sửa thông tin lớp học"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteClass(cls.id, cls.class_code)}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition cursor-pointer"
+                              title="Xóa lớp học"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ) : user?.role === 'STUDENT' ? (
+                          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-200">
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            Đang theo học
+                          </span>
+                        ) : user?.role === 'TEACHER' ? (
+                          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-xl border border-indigo-200">
+                            <School className="w-3.5 h-3.5" />
+                            Giảng dạy
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 text-xs">-</span>
+                        )}
                       </td>
                     </tr>
                   );
@@ -508,7 +544,7 @@ export const ClassesView = () => {
       </div>
 
       {/* ================= MODAL: THÊM LỚP HỌC MỚI ================= */}
-      {showAddModal && (
+      {showAddModal && createPortal(
         <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-7 shadow-2xl border border-slate-200 relative overflow-hidden">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
@@ -628,11 +664,12 @@ export const ClassesView = () => {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ================= MODAL: SỬA LỚP HỌC ================= */}
-      {showEditModal && editingClass && (
+      {showEditModal && editingClass && createPortal(
         <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-7 shadow-2xl border border-slate-200 relative overflow-hidden">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
@@ -698,7 +735,7 @@ export const ClassesView = () => {
                   className="w-full border border-slate-300 p-2.5 rounded-xl bg-white font-bold outline-hidden focus:border-indigo-600"
                 >
                   <option value="OPEN_FOR_ENROLLMENT">Đang mở đăng ký (OPEN_FOR_ENROLLMENT)</option>
-                  <option value="IN_PROGRESS">Đang giảng dạy (IN_PROGRESS)</option>
+                  <option value="IN_PROGRESS">Đang diễn ra (IN_PROGRESS)</option>
                   <option value="COMPLETED">Đã hoàn thành (COMPLETED)</option>
                   <option value="CANCELLED">Đã hủy (CANCELLED)</option>
                 </select>
@@ -745,11 +782,12 @@ export const ClassesView = () => {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ================= MODAL: DANH SÁCH LỚP (ROSTER) ================= */}
-      {selectedClassRoster && (
+      {selectedClassRoster && createPortal(
         <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-7 shadow-2xl border border-slate-200 relative overflow-hidden">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
@@ -822,7 +860,8 @@ export const ClassesView = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
     </div>

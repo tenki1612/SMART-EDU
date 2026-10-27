@@ -4,6 +4,12 @@
   :root {
     --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     --font-mono: 'JetBrains Mono', monospace;
+
+    /* Brand color palette */
+    --color-primary: #4f46e5;
+    --color-primary-light: #818cf8;
+    --color-violet: #7c3aed;
+    --color-accent: #06b6d4;
   }
 
   body {
@@ -18,44 +24,90 @@
   .tabular-nums {
     font-variant-numeric: tabular-nums;
   }
+
+  /* Disable browser default password reveal and clear buttons */
+  input::-ms-reveal,
+  input::-ms-clear {
+    display: none !important;
+  }
 }
 
-/* Subtle, polished custom scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 9999px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+/* ─── Animations ─────────────────────────────────────── */
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-12px); }
 }
 
-/* Dark container scrollbar (Sidebar & Dark panels) */
-.dark-scrollbar::-webkit-scrollbar {
-  width: 4px;
-}
-.dark-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
-}
-.dark-scrollbar::-webkit-scrollbar-thumb {
-  background: #334155;
-  border-radius: 9999px;
-}
-.dark-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #475569;
+@keyframes float-slow {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  50% { transform: translateY(-18px) rotate(3deg); }
 }
 
-/* Smooth card transition */
+@keyframes shimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 8px 2px rgba(99,102,241,0.3); }
+  50% { box-shadow: 0 0 24px 6px rgba(99,102,241,0.6); }
+}
+
+@keyframes gradient-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.animate-float { animation: float 4s ease-in-out infinite; }
+.animate-float-slow { animation: float-slow 6s ease-in-out infinite; }
+.animate-gradient { 
+  background-size: 200% 200%;
+  animation: gradient-shift 4s ease infinite;
+}
+
+/* ─── Gradient text utility ──────────────────────────── */
+.gradient-text {
+  background: linear-gradient(135deg, #818cf8, #a78bfa, #67e8f9);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ─── Glass card ─────────────────────────────────────── */
+.glass-card {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 4px 24px -4px rgba(15, 23, 42, 0.08);
+}
+
+/* ─── Scrollbars ─────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #c7d2fe; border-radius: 9999px; }
+::-webkit-scrollbar-thumb:hover { background: #a5b4fc; }
+
+/* Dark sidebar scrollbar */
+.dark-scrollbar::-webkit-scrollbar { width: 4px; }
+.dark-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.dark-scrollbar::-webkit-scrollbar-thumb { background: #312e81; border-radius: 9999px; }
+.dark-scrollbar::-webkit-scrollbar-thumb:hover { background: #4338ca; }
+
+/* ─── Card hover lift ────────────────────────────────── */
 .card-hover {
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .card-hover:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.08), 0 8px 10px -6px rgba(15, 23, 42, 0.04);
+  transform: translateY(-3px);
+  box-shadow: 0 16px 32px -8px rgba(79, 70, 229, 0.12), 0 8px 16px -4px rgba(15, 23, 42, 0.06);
+}
+
+/* ─── Navbar gradient accent line ────────────────────── */
+.navbar-accent::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #6366f1, #8b5cf6, #06b6d4);
 }

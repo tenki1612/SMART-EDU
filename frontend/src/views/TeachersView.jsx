@@ -59,21 +59,6 @@ export const TeachersView = () => {
   return (
     <div className="space-y-6">
       
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-indigo-50 border border-indigo-200/80 flex items-center justify-center text-indigo-600">
-              <GraduationCap className="w-4 h-4" />
-            </div>
-            Đội ngũ & Lịch giảng dạy Giảng viên
-          </h2>
-          <p className="text-xs text-slate-500 mt-1">
-            Quản trị hồ sơ chuyên môn giảng viên, chứng chỉ quốc tế và điều phối thời khóa biểu giảng dạy.
-          </p>
-        </div>
-      </div>
-
       {/* Overview Stat Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">

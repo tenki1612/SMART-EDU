@@ -1,8 +1,8 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
 from app.core.database import get_db
-from app.core.permissions import require_roles, RoleEnum, get_current_user_payload
+from app.core.permissions import require_roles, RoleEnum, get_current_user_payload, get_optional_user_payload
 from app.common.response import ApiResponse
 from app.modules.classes.schemas import (
     ClassCreate, ClassUpdate, ClassResponse, ClassRosterStudentItem, AddStudentToClassRequest
@@ -35,9 +35,20 @@ def list_classes(
     q: Optional[str] = Query(None, description="Tìm theo mã lớp"),
     course_id: Optional[int] = Query(None, description="Lọc theo khóa học"),
     status: Optional[str] = Query(None, description="Lọc: OPEN_FOR_ENROLLMENT, IN_PROGRESS, COMPLETED..."),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    payload: Optional[dict] = Depends(get_optional_user_payload)
 ):
-    classes = ClassService.list_classes(db, q=q, course_id=course_id, status=status)
+    student_id = None
+    if payload and payload.get("role") == RoleEnum.STUDENT.value:
+        from app.modules.students.models import Student
+        user_id = int(payload.get("sub", 0)) if "sub" in payload else payload.get("user_id")
+        student = db.query(Student).filter(Student.user_id == user_id, Student.is_deleted == False).first()
+        if student:
+            student_id = student.id
+        else:
+            return ApiResponse(data=[], message="Học viên chưa có hồ sơ học tập")
+
+    classes = ClassService.list_classes(db, q=q, course_id=course_id, status=status, student_id=student_id)
     return ApiResponse(data=classes, message="Danh sách lớp học")
 
 @router.get("/{class_id}", response_model=ApiResponse[ClassResponse], summary="FR-35: Xem chi tiết lớp học (gồm cấp độ mục tiêu)")
@@ -64,6 +75,26 @@ def get_class_students(
     db: Session = Depends(get_db),
     payload: dict = Depends(get_current_user_payload)
 ):
+    role = payload.get("role")
+    user_id = payload.get("user_id")
+
+    # Học viên không có quyền xem danh sách học viên trong lớp học
+    if role == RoleEnum.STUDENT.value:
+        raise HTTPException(status_code=403, detail="Học viên không có quyền xem danh sách học viên trong lớp học!")
+
+    user_id = int(payload.get("sub", 0)) if "sub" in payload else payload.get("user_id")
+
+    # Giáo viên chỉ được xem danh sách học viên lớp học của mình
+    if role == RoleEnum.TEACHER.value:
+        from app.modules.teachers.models import Teacher
+        from app.modules.classes.models import Class
+        teacher = db.query(Teacher).filter(Teacher.user_id == user_id).first()
+        cls = db.query(Class).filter(Class.id == class_id).first()
+        if not cls:
+            raise HTTPException(status_code=404, detail="Không tìm thấy lớp học")
+        if not teacher or cls.teacher_id != teacher.id:
+            raise HTTPException(status_code=403, detail="Giáo viên chỉ được phép xem danh sách học viên lớp học của mình!")
+
     students = ClassService.get_class_roster(db, class_id)
     return ApiResponse(data=students, message="Danh sách học viên trong lớp")
 

@@ -171,22 +171,34 @@ export const LoginView = () => {
   const isWrongPasswordError = errorMsg.includes('Mật khẩu không chính xác');
 
   return (
-    <div className="min-h-screen bg-slate-950 flex flex-col justify-center relative overflow-hidden font-sans">
+    <div className="min-h-screen flex flex-col justify-center relative overflow-hidden font-sans" style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%)' }}>
       
       {/* Dynamic Background Mesh Glows */}
-      <div className="absolute top-0 left-1/4 w-[600px] h-[600px] bg-gradient-to-br from-indigo-600/20 via-purple-600/10 to-transparent rounded-full blur-[140px] pointer-events-none" />
-      <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] bg-gradient-to-tr from-sky-600/20 via-blue-600/10 to-transparent rounded-full blur-[130px] pointer-events-none" />
+      <div className="absolute top-0 left-1/4 w-[600px] h-[600px] bg-gradient-to-br from-violet-600/30 via-indigo-600/15 to-transparent rounded-full blur-[140px] pointer-events-none" />
+      <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] bg-gradient-to-tr from-cyan-500/25 via-sky-600/10 to-transparent rounded-full blur-[130px] pointer-events-none" />
+      <div className="absolute top-1/2 left-0 w-[300px] h-[300px] bg-gradient-to-tr from-purple-600/15 to-transparent rounded-full blur-[100px] pointer-events-none" />
 
       {/* Main Split Portal Card */}
       <div className="relative z-10 max-w-5xl w-full mx-auto p-4 sm:p-6 lg:p-8">
-        <div className="bg-slate-900/90 backdrop-blur-xl rounded-3xl border border-slate-800 shadow-2xl overflow-hidden grid grid-cols-1 lg:grid-cols-12">
+        <div className="rounded-3xl overflow-hidden grid grid-cols-1 lg:grid-cols-12" style={{ boxShadow: '0 32px 80px -12px rgba(0,0,0,0.6), 0 0 0 1px rgba(99,102,241,0.2)' }}>
           
           {/* LEFT COLUMN: BRANDING & SYSTEM SHOWCASE (5 Cols) */}
-          <div className="lg:col-span-5 bg-gradient-to-b from-slate-900 to-slate-950 p-8 sm:p-10 flex flex-col justify-between border-b lg:border-b-0 lg:border-r border-slate-800/80">
-            <div>
+          <div className="lg:col-span-5 relative p-8 sm:p-10 flex flex-col justify-between border-b lg:border-b-0 lg:border-r border-indigo-400/20 overflow-hidden"
+            style={{ background: 'linear-gradient(145deg, #4f46e5 0%, #7c3aed 55%, #6d28d9 100%)' }}>
+            {/* Decorative blur orbs */}
+            <div className="absolute -top-16 -right-16 w-56 h-56 bg-cyan-400/25 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute -bottom-12 -left-12 w-48 h-48 bg-rose-400/20 rounded-full blur-2xl pointer-events-none" />
+            <div className="absolute top-1/2 right-6 w-20 h-20 bg-amber-300/20 rounded-full blur-xl pointer-events-none" />
+            {/* Floating dots */}
+            <div className="absolute inset-0 pointer-events-none overflow-hidden">
+              {[{t:'12%',l:'10%'},{t:'25%',l:'80%'},{t:'55%',l:'6%'},{t:'70%',l:'88%'},{t:'85%',l:'25%'},{t:'90%',l:'60%'}].map((d,i)=>
+                <div key={i} className="absolute w-1.5 h-1.5 rounded-full bg-white/15" style={{top:d.t,left:d.l}} />
+              )}
+            </div>
+            <div className="relative">
               {/* Center Logo & Badges */}
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-indigo-600 to-indigo-500 flex items-center justify-center text-white shadow-lg shadow-indigo-600/30">
+                <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-sm border border-white/30 flex items-center justify-center text-white shadow-lg shadow-black/20">
                   <GraduationCap className="w-6 h-6" />
                 </div>
                 <div>
@@ -194,7 +206,7 @@ export const LoginView = () => {
                     SMART-EDU
                     <Sparkles className="w-4 h-4 text-amber-400" />
                   </h1>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400 block">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-200 block">
                     Language Center LMS 2.0
                   </span>
                 </div>
@@ -202,30 +214,30 @@ export const LoginView = () => {
 
               {/* Tagline & Subheading */}
               <div className="mt-8">
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 mb-3">
-                  <Award className="w-3.5 h-3.5 text-indigo-400" />
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-white/20 text-white border border-white/30 mb-3">
+                  <Award className="w-3.5 h-3.5 text-amber-300" />
                   Chuẩn Đào Tạo Quốc Tế
                 </span>
                 <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight leading-snug">
                   Hệ thống Quản lý <br className="hidden sm:inline" />
-                  <span className="bg-gradient-to-r from-indigo-400 via-sky-300 to-purple-400 bg-clip-text text-transparent">
-                    Đào tạo & Khảo thí
+                  <span className="bg-gradient-to-r from-cyan-200 via-white to-amber-200 bg-clip-text text-transparent">
+                    Đào tạo &amp; Khảo thí
                   </span>
                 </h2>
-                <p className="mt-3 text-xs text-slate-400 leading-relaxed">
+                <p className="mt-3 text-xs text-indigo-100 leading-relaxed">
                   Giải pháp toàn diện tối ưu hóa xếp lịch ma trận tuần, sổ điểm số hóa, phát hiện xung đột phòng học và theo dõi lộ trình IELTS & TOEIC.
                 </p>
               </div>
             </div>
 
             {/* Bottom System Status */}
-            <div className="mt-8 pt-4 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
+            <div className="relative mt-8 pt-4 border-t border-white/20 flex items-center justify-between text-[11px] text-indigo-100">
               <span className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                <span className="w-2 h-2 rounded-full bg-emerald-300 animate-ping" />
                 Hệ thống máy chủ
               </span>
-              <span className="text-emerald-400 font-bold font-mono flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-emerald-300 font-bold font-mono flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" />
                 ONLINE
               </span>
             </div>
@@ -298,37 +310,9 @@ export const LoginView = () => {
                         </button>
                       )}
 
-                      {/* Action for Lockout: Shortcut to Forgot Password */}
-                      {isLockoutError && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setForgotIdentifier(username);
-                            setAuthMode('forgot_request');
-                            setErrorMsg('');
-                          }}
-                          className="mt-2 inline-flex items-center gap-1.5 text-xs font-bold text-indigo-700 hover:text-indigo-900 underline cursor-pointer"
-                        >
-                          <KeyRound className="w-3.5 h-3.5" />
-                          Mở khóa tài khoản ngay qua chức năng Quên mật khẩu &rarr;
-                        </button>
-                      )}
 
-                      {/* Action for Wrong Password: Shortcut to Forgot Password */}
-                      {isWrongPasswordError && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setForgotIdentifier(username);
-                            setAuthMode('forgot_request');
-                            setErrorMsg('');
-                          }}
-                          className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-bold text-amber-900 hover:text-indigo-800 underline cursor-pointer"
-                        >
-                          <KeyRound className="w-3.5 h-3.5" />
-                          Quên mật khẩu? Lấy lại mật khẩu bằng mã OTP
-                        </button>
-                      )}
+
+
                     </div>
                   </div>
                 )}
@@ -397,7 +381,7 @@ export const LoginView = () => {
                   <button
                     type="submit"
                     disabled={isLoggingIn}
-                    className="w-full mt-4 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 active:scale-[0.99] text-white py-3.5 rounded-2xl font-bold text-xs shadow-lg shadow-indigo-600/25 transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
+                    className="w-full mt-4 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 active:scale-[0.99] text-white py-3.5 rounded-2xl font-bold text-xs shadow-lg shadow-indigo-600/30 transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
                   >
                     {isLoggingIn ? (
                       <>
@@ -599,7 +583,7 @@ export const LoginView = () => {
                   <button
                     type="submit"
                     disabled={isRegistering}
-                    className="w-full mt-2 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 active:scale-[0.99] text-white py-3 rounded-2xl font-bold text-xs shadow-lg shadow-indigo-600/25 transition cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
+                    className="w-full mt-2 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 active:scale-[0.99] text-white py-3 rounded-2xl font-bold text-xs shadow-lg shadow-indigo-600/30 transition cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
                   >
                     {isRegistering ? (
                       <>
@@ -679,7 +663,7 @@ export const LoginView = () => {
                   <button
                     type="submit"
                     disabled={isForgotLoading}
-                    className="w-full mt-2 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 active:scale-[0.99] text-white py-3.5 rounded-2xl font-bold text-xs shadow-lg shadow-indigo-600/25 transition cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
+                    className="w-full mt-2 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 active:scale-[0.99] text-white py-3.5 rounded-2xl font-bold text-xs shadow-lg shadow-indigo-600/30 transition cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
                   >
                     {isForgotLoading ? (
                       <>
@@ -783,7 +767,7 @@ export const LoginView = () => {
                   <button
                     type="submit"
                     disabled={isForgotLoading}
-                    className="w-full mt-4 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 active:scale-[0.99] text-white py-3.5 rounded-2xl font-bold text-xs shadow-lg shadow-indigo-600/25 transition cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
+                    className="w-full mt-4 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 active:scale-[0.99] text-white py-3.5 rounded-2xl font-bold text-xs shadow-lg shadow-indigo-600/30 transition cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
                   >
                     {isForgotLoading ? (
                       <>

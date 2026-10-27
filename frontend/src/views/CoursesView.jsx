@@ -1,6 +1,9 @@
 import React, { useEffect, useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmDialogContext';
+import { useHeaderSlot } from '../context/HeaderSlotContext';
 import { coursesApi } from '../services/api';
 import {
   Plus,
@@ -23,6 +26,8 @@ import {
 export const CoursesView = () => {
   const { user } = useAuth();
   const toast = useToast();
+  const confirm = useConfirm();
+  const headerSlot = useHeaderSlot();
   const canManage = ['ADMIN', 'ACADEMIC_STAFF'].includes(user?.role || '');
 
   const [courses, setCourses] = useState([]);
@@ -79,7 +84,14 @@ export const CoursesView = () => {
   };
 
   const handleDelete = async (id, title) => {
-    if (!window.confirm(`Bạn có chắc chắn muốn XÓA vĩnh viễn khóa học "${title}"?`)) return;
+    const isConfirmed = await confirm({
+      title: 'Xóa khóa học vĩnh viễn',
+      message: `Bạn có chắc chắn muốn XÓA vĩnh viễn khóa học "${title}"? Thao tác này không thể hoàn tác.`,
+      confirmText: 'Xác nhận xóa',
+      cancelText: 'Hủy bỏ',
+      type: 'danger',
+    });
+    if (!isConfirmed) return;
     try {
       await coursesApi.delete(id);
       toast.success('Đã xóa khóa học thành công!');
@@ -171,68 +183,30 @@ export const CoursesView = () => {
 
   return (
     <div className="space-y-6">
-      
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-2xl bg-indigo-50 border border-indigo-200/80 flex items-center justify-center text-indigo-600 shadow-2xs">
-              <BookOpen className="w-5 h-5" />
-            </div>
-            <span>Chương Trình & Khóa Học</span>
-          </h2>
-          <p className="text-xs text-slate-500 mt-1">
-            Quản lý lộ trình đào tạo, chuẩn đầu ra quốc tế (IELTS / TOEIC), thời lượng và biểu phí niêm yết.
-          </p>
-        </div>
-
-        {canManage && (
-          <button
-            type="button"
-            onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-700 hover:to-indigo-600 active:scale-95 text-white px-4 py-2.5 rounded-2xl text-xs font-bold shadow-sm shadow-indigo-200 transition cursor-pointer shrink-0"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Thêm khóa học mới</span>
-          </button>
-        )}
-      </div>
+      {/* Top Header Action Button */}
+      {headerSlot && canManage && createPortal(
+        <button
+          type="button"
+          onClick={() => setShowAddModal(true)}
+          className="flex items-center gap-1.5 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-700 hover:to-indigo-600 active:scale-95 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold shadow-xs shadow-indigo-200 transition cursor-pointer shrink-0"
+        >
+          <Plus className="w-4 h-4" />
+          <span>Thêm khóa học mới</span>
+        </button>,
+        headerSlot
+      )}
 
       {/* KPI Metric Overview */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 sm:gap-4">
         <div className="bg-white p-4 sm:p-5 rounded-3xl border border-slate-200/90 shadow-2xs hover:border-indigo-200 hover:-translate-y-0.5 transition-all">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Tổng khóa học</span>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{user?.role === 'STUDENT' ? 'Khóa học của bạn' : 'Tổng khóa học'}</span>
             <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
               <Layers className="w-4 h-4" />
             </div>
           </div>
           <div className="text-2xl font-black text-slate-900 tabular-nums">{stats.total}</div>
           <div className="text-[11px] text-slate-500 mt-1 font-medium">Toàn bộ chương trình</div>
-        </div>
-
-        <div className="bg-white p-4 sm:p-5 rounded-3xl border border-slate-200/90 shadow-2xs hover:border-emerald-200 hover:-translate-y-0.5 transition-all">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Đang tuyển sinh</span>
-            <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-              <CheckCircle2 className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="text-2xl font-black text-emerald-600 tabular-nums">{stats.active}</div>
-          <div className="text-[11px] text-emerald-700/80 mt-1 font-medium">Sẵn sàng mở lớp</div>
-        </div>
-
-        <div className="bg-white p-4 sm:p-5 rounded-3xl border border-slate-200/90 shadow-2xs hover:border-amber-200 hover:-translate-y-0.5 transition-all">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Học phí trung bình</span>
-            <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
-              <DollarSign className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="text-2xl font-black text-slate-900 tabular-nums">
-            {stats.avgFee > 0 ? (stats.avgFee / 1000000).toFixed(1) + ' tr' : '0 đ'}
-          </div>
-          <div className="text-[11px] text-slate-500 mt-1 font-medium">Mỗi khóa đào tạo</div>
         </div>
 
         <div className="bg-white p-4 sm:p-5 rounded-3xl border border-slate-200/90 shadow-2xs hover:border-purple-200 hover:-translate-y-0.5 transition-all">
@@ -308,8 +282,14 @@ export const CoursesView = () => {
         {filteredCourses.length === 0 ? (
           <div className="col-span-full py-16 text-center text-slate-400 bg-white rounded-3xl border border-slate-200/90 shadow-2xs">
             <BookOpen className="w-10 h-10 mx-auto mb-3 text-slate-300" />
-            <h4 className="text-sm font-bold text-slate-700">Không tìm thấy khóa học nào</h4>
-            <p className="text-xs text-slate-400 mt-1">Hãy thử tìm kiếm với từ khóa khác hoặc điều chỉnh bộ lọc.</p>
+            <h4 className="text-sm font-bold text-slate-700">
+              {user?.role === 'STUDENT' ? 'Bạn hiện chưa theo học khóa học nào' : 'Không tìm thấy khóa học nào'}
+            </h4>
+            <p className="text-xs text-slate-400 mt-1">
+              {user?.role === 'STUDENT'
+                ? 'Thông tin khóa học sẽ hiển thị khi bạn được ghi danh vào một lớp học.'
+                : 'Hãy thử tìm kiếm với từ khóa khác hoặc điều chỉnh bộ lọc.'}
+            </p>
           </div>
         ) : (
           filteredCourses.map((course) => (
@@ -427,7 +407,7 @@ export const CoursesView = () => {
       </div>
 
       {/* ================= MODAL THÊM KHÓA HỌC ================= */}
-      {showAddModal && (
+      {showAddModal && createPortal(
         <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl border border-slate-200 relative overflow-hidden">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
@@ -541,11 +521,12 @@ export const CoursesView = () => {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ================= MODAL CHỈNH SỬA KHÓA HỌC ================= */}
-      {showEditModal && editingCourse && (
+      {showEditModal && editingCourse && createPortal(
         <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl border border-slate-200 relative overflow-hidden">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
@@ -663,7 +644,8 @@ export const CoursesView = () => {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
     </div>

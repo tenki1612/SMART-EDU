@@ -74,8 +74,7 @@ class AuthService:
                 user.locked_until = datetime.now(timezone.utc) + timedelta(minutes=LOCKOUT_MINUTES)
                 db.commit()
                 raise BusinessException(
-                    f"Bạn đã nhập sai mật khẩu 5 lần. Tài khoản đã bị khóa tạm thời trong {LOCKOUT_MINUTES} phút để bảo mật. "
-                    f"Vui lòng thử lại sau hoặc đặt lại mật khẩu qua chức năng 'Quên mật khẩu'."
+                    f"Bạn đã nhập sai mật khẩu 5 lần. Tài khoản đã bị khóa tạm thời trong {LOCKOUT_MINUTES} phút để bảo mật. Vui lòng thử lại sau."
                 )
             else:
                 remaining = MAX_FAILED_ATTEMPTS - user.failed_login_attempts

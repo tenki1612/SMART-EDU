@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import List
+from typing import List, Optional
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
@@ -14,6 +14,17 @@ class RoleEnum(str, Enum):
     TEACHER = "TEACHER"
     STUDENT = "STUDENT"
     PARENT = "PARENT"
+
+def get_optional_user_payload(token: Optional[str] = Depends(oauth2_scheme)) -> Optional[dict]:
+    if not token:
+        return None
+    try:
+        payload = decode_access_token(token)
+        if not payload or "sub" not in payload:
+            return None
+        return payload
+    except Exception:
+        return None
 
 def get_current_user_payload(token: str = Depends(oauth2_scheme)) -> dict:
     if not token:

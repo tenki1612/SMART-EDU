@@ -1,6 +1,9 @@
 import React, { useEffect, useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmDialogContext';
+import { useHeaderSlot } from '../context/HeaderSlotContext';
 import { classroomsApi } from '../services/api';
 import {
   Wrench,
@@ -21,6 +24,8 @@ import {
 export const ClassroomsView = () => {
   const { user } = useAuth();
   const toast = useToast();
+  const confirm = useConfirm();
+  const headerSlot = useHeaderSlot();
   const canManage = ['ADMIN', 'ACADEMIC_STAFF'].includes(user?.role || '');
 
   const [rooms, setRooms] = useState([]);
@@ -133,7 +138,14 @@ export const ClassroomsView = () => {
   };
 
   const handleDeleteRoom = async (roomId, roomCode) => {
-    if (!window.confirm(`Bạn có chắc chắn muốn XÓA vĩnh viễn phòng học "${roomCode}"?`)) return;
+    const isConfirmed = await confirm({
+      title: 'Xóa phòng học vĩnh viễn',
+      message: `Bạn có chắc chắn muốn XÓA vĩnh viễn phòng học "${roomCode}"? Thao tác này sẽ loại bỏ thông tin cơ sở vật chất tương ứng.`,
+      confirmText: 'Xác nhận xóa',
+      cancelText: 'Hủy bỏ',
+      type: 'danger',
+    });
+    if (!isConfirmed) return;
     try {
       await classroomsApi.delete(roomId);
       toast.success(`Đã xóa phòng học ${roomCode} thành công!`);
@@ -168,31 +180,18 @@ export const ClassroomsView = () => {
   return (
     <div className="space-y-6">
       
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-2xl bg-indigo-50 border border-indigo-200/80 flex items-center justify-center text-indigo-600 shadow-2xs">
-              <Building2 className="w-5 h-5" />
-            </div>
-            <span>Phòng Học & Cơ Sở Vật Chất</span>
-          </h2>
-          <p className="text-xs text-slate-500 mt-1">
-            Theo dõi danh sách phòng học, sức chứa tối đa và cập nhật trạng thái bảo trì phục vụ xếp lịch giảng dạy.
-          </p>
-        </div>
-
-        {canManage && (
-          <button
-            type="button"
-            onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-700 hover:to-indigo-600 active:scale-95 text-white px-4 py-2.5 rounded-2xl text-xs font-bold shadow-sm shadow-indigo-200 transition cursor-pointer shrink-0"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Thêm phòng học mới</span>
-          </button>
-        )}
-      </div>
+      {/* Top Header Action Button */}
+      {headerSlot && canManage && createPortal(
+        <button
+          type="button"
+          onClick={() => setShowAddModal(true)}
+          className="flex items-center gap-1.5 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-700 hover:to-indigo-600 active:scale-95 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold shadow-xs shadow-indigo-200 transition cursor-pointer shrink-0"
+        >
+          <Plus className="w-4 h-4" />
+          <span>Thêm phòng học mới</span>
+        </button>,
+        headerSlot
+      )}
 
       {/* KPI Metric Overview */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
@@ -397,7 +396,7 @@ export const ClassroomsView = () => {
       </div>
 
       {/* ================= MODAL: THÊM PHÒNG HỌC ================= */}
-      {showAddModal && (
+      {showAddModal && createPortal(
         <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl border border-slate-200 relative overflow-hidden">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
@@ -486,11 +485,12 @@ export const ClassroomsView = () => {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ================= MODAL: SỬA PHÒNG HỌC ================= */}
-      {showEditModal && editingRoom && (
+      {showEditModal && editingRoom && createPortal(
         <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl border border-slate-200 relative overflow-hidden">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
@@ -575,7 +575,8 @@ export const ClassroomsView = () => {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
     </div>

@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmDialogContext';
+import { useHeaderSlot } from '../context/HeaderSlotContext';
 import { accountsApi } from '../services/api';
 import { UserAvatar } from '../components/common/UserAvatar';
 import {
@@ -32,7 +35,9 @@ import {
 export const AccountsView = () => {
   const { user } = useAuth();
   const toast = useToast();
+  const confirm = useConfirm();
   const isAdmin = user?.role === 'ADMIN';
+  const headerSlot = useHeaderSlot();
   const canManage = ['ADMIN', 'ACADEMIC_STAFF'].includes(user?.role || '');
 
   const [users, setUsers] = useState([]);
@@ -53,6 +58,24 @@ export const AccountsView = () => {
   const [targetUserForRole, setTargetUserForRole] = useState(null);
   const [newSelectedRole, setNewSelectedRole] = useState('STUDENT');
   const [targetUserForPwd, setTargetUserForPwd] = useState(null);
+  // Modal danh sách học sinh liên quan (Yêu cầu 5)
+  const [relatedModal, setRelatedModal] = useState({
+    isOpen: false,
+    user: null,
+    students: [],
+    isLoading: false,
+  });
+
+  const handleOpenRelatedStudents = async (u) => {
+    setRelatedModal({ isOpen: true, user: u, students: [], isLoading: true });
+    try {
+      const res = await accountsApi.getRelatedStudents(u.id);
+      setRelatedModal({ isOpen: true, user: u, students: res.data || [], isLoading: false });
+    } catch (e) {
+      toast.error('Lỗi khi tải học sinh liên quan: ' + e.message);
+      setRelatedModal({ isOpen: false, user: null, students: [], isLoading: false });
+    }
+  };
   const [adminNewPassword, setAdminNewPassword] = useState('SmartEdu@2026');
   const [copied, setCopied] = useState(false);
 
@@ -185,8 +208,15 @@ export const AccountsView = () => {
       return;
     }
     const isCurrentlyLocked = !u.is_active || u.is_locked;
-    const actionName = isCurrentlyLocked ? 'MỞ KHÓA' : 'KHÓA';
-    if (!window.confirm(`Bạn có chắc chắn muốn ${actionName} tài khoản "${u.username}" (${u.full_name})?`)) return;
+    const actionName = isCurrentlyLocked ? 'Mở khóa' : 'Khóa';
+    const isConfirmed = await confirm({
+      title: `${actionName} tài khoản người dùng`,
+      message: `Bạn có chắc chắn muốn ${actionName.toLowerCase()} tài khoản "${u.username}" (${u.full_name})?`,
+      confirmText: actionName,
+      cancelText: 'Hủy bỏ',
+      type: isCurrentlyLocked ? 'info' : 'warning',
+    });
+    if (!isConfirmed) return;
 
     try {
       const res = await accountsApi.toggleLock(u.id);
@@ -243,7 +273,14 @@ export const AccountsView = () => {
       toast.warning('Bạn không thể tự xóa tài khoản đang đăng nhập!');
       return;
     }
-    if (!window.confirm(`Bạn có chắc chắn muốn XÓA tài khoản "${username}"? Dữ liệu người dùng sẽ được lưu trữ an toàn (soft delete).`)) return;
+    const isConfirmed = await confirm({
+      title: 'Xóa tài khoản người dùng',
+      message: `Bạn có chắc chắn muốn XÓA tài khoản "${username}"? Dữ liệu người dùng sẽ được lưu trữ an toàn (soft delete) và tài khoản sẽ bị vô hiệu hóa.`,
+      confirmText: 'Xác nhận xóa',
+      cancelText: 'Hủy bỏ',
+      type: 'danger',
+    });
+    if (!isConfirmed) return;
     try {
       await accountsApi.delete(userId);
       toast.success(`Đã xóa tài khoản ${username} thành công!`);
@@ -315,48 +352,30 @@ export const AccountsView = () => {
 
   return (
     <div className="space-y-6">
-      {/* HEADER SECTION */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-slate-200/90 shadow-xs">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shadow-2xs">
-              <ShieldCheck className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-                Quản lý Tài khoản & Phân quyền Hệ thống
-                {isAdmin && (
-                  <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 uppercase tracking-wider">
-                    Toàn quyền Admin
-                  </span>
-                )}
-              </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Xem định danh, khóa/mở khóa tài khoản, nâng quyền vai trò 5 cấp bậc và cấp lại mật khẩu bảo mật.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2.5 flex-wrap">
+      {/* Top Header Action Buttons */}
+      {headerSlot && createPortal(
+        <div className="flex items-center gap-2">
           <button
+            type="button"
             onClick={() => setShowPasswordModal(true)}
-            className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 px-3.5 py-2.5 rounded-2xl text-xs font-bold cursor-pointer transition active:scale-95"
+            className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition active:scale-95 border border-slate-200/80"
           >
-            <KeyRound className="w-4 h-4 text-slate-500" />
-            <span>Đổi mật khẩu cá nhân</span>
+            <KeyRound className="w-3.5 h-3.5 text-slate-500" />
+            <span>Đổi mật khẩu</span>
           </button>
           {canManage && (
             <button
+              type="button"
               onClick={() => setShowAddModal(true)}
-              className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-2xl text-xs font-bold shadow-sm shadow-indigo-200 cursor-pointer transition active:scale-95"
+              className="flex items-center gap-1.5 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-700 hover:to-indigo-600 active:scale-95 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold shadow-xs shadow-indigo-200 cursor-pointer transition"
             >
               <Plus className="w-4 h-4" />
               <span>Thêm tài khoản mới</span>
             </button>
           )}
-        </div>
-      </div>
+        </div>,
+        headerSlot
+      )}
 
       {/* KPI METRICS CARDS */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -589,14 +608,14 @@ export const AccountsView = () => {
                             </button>
                           )}
 
-                          {/* CẤP LẠI MẬT KHẨU (ADMIN ONLY) */}
-                          {isAdmin && (
+                          {/* XEM HỌC SINH LIÊN QUAN (Yêu cầu 5) */}
+                          {['PARENT', 'TEACHER', 'STUDENT'].includes(u.role) && (
                             <button
-                              onClick={() => handleOpenResetPwdModal(u)}
-                              className="p-1.5 text-slate-500 hover:text-amber-600 hover:bg-amber-50 rounded-xl transition cursor-pointer border border-slate-200/80 hover:border-amber-200 active:scale-95"
-                              title="Cấp lại mật khẩu mới cho tài khoản"
+                              onClick={() => handleOpenRelatedStudents(u)}
+                              className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition cursor-pointer border border-slate-200/80 hover:border-indigo-200 active:scale-95"
+                              title="Xem danh sách học sinh liên quan đến tài khoản này"
                             >
-                              <KeyRound className="w-3.5 h-3.5" />
+                              <Users className="w-3.5 h-3.5" />
                             </button>
                           )}
 
@@ -633,7 +652,7 @@ export const AccountsView = () => {
       </div>
 
       {/* ================= MODAL: NÂNG QUYỀN / ĐỔI VAI TRÒ (ADMIN ONLY) ================= */}
-      {showRoleModal && targetUserForRole && (
+      {showRoleModal && targetUserForRole && createPortal(
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl border border-slate-200 animate-in fade-in zoom-in duration-200">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
@@ -724,99 +743,83 @@ export const AccountsView = () => {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {/* ================= MODAL: CẤP LẠI MẬT KHẨU (ADMIN ONLY) ================= */}
-      {showResetPwdModal && targetUserForPwd && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-6 sm:p-7 shadow-2xl border border-slate-200 animate-in fade-in zoom-in duration-200">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+      {/* ================= MODAL: DANH SÁCH HỌC SINH LIÊN QUAN (Yêu cầu 5) ================= */}
+      {relatedModal.isOpen && relatedModal.user && createPortal(
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-7 shadow-2xl border border-slate-200 flex flex-col max-h-[85vh] overflow-hidden">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4 shrink-0">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-2xl bg-amber-50 border border-amber-100 flex items-center justify-center text-amber-600">
-                  <KeyRound className="w-5 h-5" />
+                <div className="w-9 h-9 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
+                  <Users className="w-5 h-5" />
                 </div>
                 <div>
                   <h3 className="text-base font-black text-slate-900">
-                    Cấp lại Mật khẩu
+                    Học Sinh Liên Quan
                   </h3>
                   <span className="text-xs text-slate-400">
-                    Tài khoản: <strong className="text-indigo-600">@{targetUserForPwd.username}</strong>
+                    Tài khoản: <strong className="text-indigo-600">{relatedModal.user.full_name}</strong> (@{relatedModal.user.username})
                   </span>
                 </div>
               </div>
               <button
-                onClick={() => {
-                  setShowResetPwdModal(false);
-                  setTargetUserForPwd(null);
-                }}
+                onClick={() => setRelatedModal({ isOpen: false, user: null, students: [], isLoading: false })}
                 className="w-8 h-8 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 flex items-center justify-center font-bold text-sm cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleAdminResetPassword} className="space-y-4 text-xs">
-              <p className="text-[11px] text-slate-500 leading-relaxed bg-amber-50/70 p-3 rounded-2xl border border-amber-200/80 text-amber-900">
-                ⚡ Mật khẩu mới sẽ được mã hóa an toàn bằng <strong>Bcrypt</strong>. Tài khoản sẽ tự động được mở khóa nếu đang bị khóa.
-              </p>
-
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="font-bold text-slate-700">Mật khẩu mới khởi tạo:</label>
-                  <button
-                    type="button"
-                    onClick={generateRandomPassword}
-                    className="text-[11px] font-bold text-indigo-600 hover:underline flex items-center gap-1 cursor-pointer"
-                  >
-                    <Sparkles className="w-3 h-3" />
-                    <span>Tạo mật khẩu ngẫu nhiên</span>
-                  </button>
+            <div className="flex-1 overflow-y-auto pr-1">
+              {relatedModal.isLoading ? (
+                <div className="py-12 text-center text-xs text-slate-400">Đang tải danh sách học sinh liên quan...</div>
+              ) : relatedModal.students.length === 0 ? (
+                <div className="py-12 text-center text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                  <Users className="w-8 h-8 mx-auto mb-2 opacity-30 text-slate-400" />
+                  <p className="text-xs font-medium">Chưa có học sinh nào liên kết với tài khoản này.</p>
                 </div>
-                <div className="relative">
-                  <input
-                    type="text"
-                    required
-                    value={adminNewPassword}
-                    onChange={(e) => setAdminNewPassword(e.target.value)}
-                    className="w-full border border-slate-300 p-2.5 pr-10 rounded-xl font-mono font-bold text-slate-900 outline-hidden focus:border-indigo-600 text-xs"
-                  />
-                  <button
-                    type="button"
-                    onClick={copyToClipboard}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-indigo-600 p-1 cursor-pointer"
-                    title="Sao chép mật khẩu"
-                  >
-                    {copied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
-                  </button>
+              ) : (
+                <div className="space-y-2.5">
+                  {relatedModal.students.map((st, idx) => (
+                    <div key={idx} className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-center justify-between gap-3 text-xs">
+                      <div>
+                        <span className="font-bold text-slate-900 block text-sm">{st.full_name}</span>
+                        <div className="flex items-center gap-2 text-[11px] text-slate-500 font-mono mt-0.5">
+                          <span className="font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-1.5 py-0.2 rounded">{st.student_code}</span>
+                          {st.email && <span>{st.email}</span>}
+                        </div>
+                        <span className="text-[11px] font-semibold text-indigo-700 mt-1 block">
+                          • {st.relation}
+                        </span>
+                      </div>
+                      <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        {st.status || 'STUDYING'}
+                      </span>
+                    </div>
+                  ))}
                 </div>
-              </div>
+              )}
+            </div>
 
-              <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowResetPwdModal(false);
-                    setTargetUserForPwd(null);
-                  }}
-                  className="px-4 py-2.5 border border-slate-300 rounded-xl font-bold text-slate-600 hover:bg-slate-50 cursor-pointer"
-                >
-                  Hủy
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2.5 bg-amber-600 text-white rounded-xl font-bold hover:bg-amber-700 shadow-sm shadow-amber-200 cursor-pointer active:scale-95"
-                >
-                  Xác nhận Cấp lại
-                </button>
-              </div>
-            </form>
+            <div className="pt-4 border-t border-slate-100 flex justify-end shrink-0 mt-4">
+              <button
+                type="button"
+                onClick={() => setRelatedModal({ isOpen: false, user: null, students: [], isLoading: false })}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition cursor-pointer"
+              >
+                Đóng
+              </button>
+            </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ================= MODAL: THÊM TÀI KHOẢN MỚI ================= */}
-      {showAddModal && (
+      {showAddModal && createPortal(
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl border border-slate-200 animate-in fade-in zoom-in duration-200">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
@@ -924,11 +927,12 @@ export const AccountsView = () => {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ================= MODAL: SỬA THÔNG TIN TÀI KHOẢN ================= */}
-      {showEditModal && editingUser && (
+      {showEditModal && editingUser && createPortal(
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl border border-slate-200 animate-in fade-in zoom-in duration-200">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
@@ -1035,11 +1039,12 @@ export const AccountsView = () => {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ================= MODAL: ĐỔI MẬT KHẨU CÁ NHÂN ================= */}
-      {showPasswordModal && (
+      {showPasswordModal && createPortal(
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-3xl max-w-sm w-full p-6 sm:p-7 shadow-2xl border border-slate-200 animate-in fade-in zoom-in duration-200">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
@@ -1093,7 +1098,8 @@ export const AccountsView = () => {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

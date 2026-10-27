@@ -2,6 +2,8 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmDialogContext';
+import { useHeaderSlot } from '../context/HeaderSlotContext';
 import { schedulesApi, classroomsApi, teachersApi, classesApi } from '../services/api';
 import {
   CalendarDays, AlertTriangle, CheckCircle, CheckCircle2, Clock, MapPin, UserCheck, Calendar,
@@ -12,6 +14,8 @@ import {
 export const SchedulesView = () => {
   const { user } = useAuth();
   const toast = useToast();
+  const confirm = useConfirm();
+  const headerSlot = useHeaderSlot();
   const canManage = ['ADMIN', 'ACADEMIC_STAFF'].includes(user?.role || '');
 
   // Data states
@@ -22,7 +26,8 @@ export const SchedulesView = () => {
   const [loading, setLoading] = useState(false);
 
   // View & Filter states
-  const [viewMode, setViewMode] = useState('grid'); // 'grid' (timetable) | 'list'
+  const isAdmin = user?.role === 'ADMIN';
+  const [viewMode, setViewMode] = useState(user?.role === 'ADMIN' ? 'list' : 'grid'); // Admin mặc định list
   const [showPersonalOnly, setShowPersonalOnly] = useState(false);
   const [historyFilter, setHistoryFilter] = useState('all'); // 'all' | 'upcoming' | 'past'
   const [selectedClassId, setSelectedClassId] = useState('');
@@ -138,21 +143,8 @@ export const SchedulesView = () => {
 
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
 
-  // Filter schedules based on historyFilter, selectedClassId, selectedTeacherId
-  const filteredSchedules = useMemo(() => {
-    return schedules.filter(s => {
-      if (selectedClassId && s.class_id !== Number(selectedClassId)) return false;
-      if (selectedTeacherId && s.teacher_id !== Number(selectedTeacherId)) return false;
-
-      const sDate = s.session_date;
-      if (historyFilter === 'upcoming') {
-        return sDate >= todayStr;
-      } else if (historyFilter === 'past') {
-        return sDate < todayStr;
-      }
-      return true;
-    });
-  }, [schedules, historyFilter, selectedClassId, selectedTeacherId, todayStr]);
+  // Filtered schedules (all active schedules)
+  const filteredSchedules = schedules;
 
   // Counts for tabs
   const upcomingCount = useMemo(() => {
@@ -228,6 +220,23 @@ export const SchedulesView = () => {
     }
   };
 
+  // Tự động kiểm tra xung đột thời gian thực trong Modal (Yêu cầu 2)
+  useEffect(() => {
+    if (!showAddModal) return;
+    const timer = setTimeout(() => {
+      checkModalConflict(addForm);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [addForm.classroom_id, addForm.teacher_id, addForm.session_date, addForm.start_time, addForm.end_time, showAddModal]);
+
+  useEffect(() => {
+    if (!showEditModal || !editingSession) return;
+    const timer = setTimeout(() => {
+      checkModalConflict(editForm, editingSession.id);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [editForm.classroom_id, editForm.teacher_id, editForm.session_date, editForm.start_time, editForm.end_time, showEditModal]);
+
   // Create session
   const handleCreateSession = async (e) => {
     e.preventDefault();
@@ -301,7 +310,14 @@ export const SchedulesView = () => {
 
   // Cancel session
   const handleCancelSession = async (id) => {
-    if (!window.confirm('Bạn có chắc chắn muốn hủy buổi học này?')) return;
+    const isConfirmed = await confirm({
+      title: 'Hủy buổi học',
+      message: 'Bạn có chắc chắn muốn hủy buổi học này? Buổi học sẽ chuyển sang trạng thái ĐÃ HỦY trên thời khóa biểu.',
+      confirmText: 'Xác nhận hủy',
+      cancelText: 'Giữ lại buổi học',
+      type: 'warning',
+    });
+    if (!isConfirmed) return;
     try {
       await schedulesApi.cancel(id);
       toast.success('Đã hủy buổi học!');
@@ -313,7 +329,14 @@ export const SchedulesView = () => {
 
   // Delete session
   const handleDeleteSession = async (id) => {
-    if (!window.confirm('Bạn có chắc chắn muốn XÓA vĩnh viễn buổi học này khỏi thời khóa biểu?')) return;
+    const isConfirmed = await confirm({
+      title: 'Xóa buổi học vĩnh viễn',
+      message: 'Bạn có chắc chắn muốn XÓA vĩnh viễn buổi học này khỏi thời khóa biểu? Thao tác này không thể hoàn tác.',
+      confirmText: 'Xác nhận xóa',
+      cancelText: 'Hủy bỏ',
+      type: 'danger',
+    });
+    if (!isConfirmed) return;
     try {
       await schedulesApi.delete(id);
       toast.success('Đã xóa buổi học thành công!');
@@ -359,175 +382,56 @@ export const SchedulesView = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-            <CalendarDays className="w-5 h-5 text-indigo-600" />
-            Thời khóa biểu & Lịch học
-          </h2>
-          <p className="text-xs text-slate-500 mt-1">
-            Tra cứu lịch theo dạng Bảng Tuần (Timetable) hoặc Danh Sách, theo dõi lịch sử học tập và quản lý ca học.
-          </p>
-        </div>
-
-        <div className="flex items-center flex-wrap gap-2.5">
-          {['TEACHER', 'STUDENT', 'PARENT'].includes(user?.role || '') && (
-            <button
-              onClick={() => setShowPersonalOnly(!showPersonalOnly)}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
-                showPersonalOnly
-                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm shadow-indigo-200'
-                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-              }`}
-            >
-              {showPersonalOnly ? 'Hiển thị tất cả lịch' : 'Xem lịch cá nhân của tôi'}
-            </button>
+      {/* Top Header Action Buttons & View Mode Toggle */}
+      {headerSlot && createPortal(
+        <div className="flex items-center gap-2">
+          {!isAdmin ? (
+            <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/80">
+              <button
+                type="button"
+                onClick={() => setViewMode('grid')}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                  viewMode === 'grid'
+                    ? 'bg-white text-indigo-700 shadow-2xs font-extrabold'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <LayoutGrid className="w-3.5 h-3.5" /> Bảng tuần
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('list')}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                  viewMode === 'list'
+                    ? 'bg-white text-indigo-700 shadow-2xs font-extrabold'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <List className="w-3.5 h-3.5" /> Danh sách
+              </button>
+            </div>
+          ) : (
+            <span className="text-xs font-bold text-slate-500 bg-white px-2.5 py-1 rounded-lg border border-slate-200/80 shadow-2xs flex items-center gap-1.5">
+              <List className="w-3.5 h-3.5 text-indigo-600" /> Danh sách tổng hợp
+            </span>
           )}
 
           {canManage && (
             <button
+              type="button"
               onClick={() => {
                 setModalConflict(null);
                 setShowAddModal(true);
               }}
-              className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-sm shadow-indigo-200 transition cursor-pointer"
+              className="flex items-center gap-1.5 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-700 hover:to-indigo-600 active:scale-95 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold shadow-xs shadow-indigo-200 transition cursor-pointer shrink-0"
             >
-              <Plus className="w-4 h-4" /> Thêm buổi học mới
+              <Plus className="w-4 h-4" />
+              <span>Thêm buổi học</span>
             </button>
           )}
-
-          {/* View Mode Toggle */}
-          <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
-            <button
-              onClick={() => setViewMode('grid')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
-                viewMode === 'grid'
-                  ? 'bg-white text-indigo-700 shadow-2xs font-extrabold'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <LayoutGrid className="w-3.5 h-3.5" /> Bảng tuần
-            </button>
-            <button
-              onClick={() => setViewMode('list')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
-                viewMode === 'list'
-                  ? 'bg-white text-indigo-700 shadow-2xs font-extrabold'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <List className="w-3.5 h-3.5" /> Danh sách
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* KPI Metric Overview Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
-          <div>
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Tổng buổi học</span>
-            <span className="text-2xl font-black text-slate-900 mt-0.5 block tabular-nums">{schedules.length}</span>
-          </div>
-          <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600">
-            <CalendarDays className="w-5 h-5" />
-          </div>
-        </div>
-
-        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
-          <div>
-            <span className="text-[11px] font-bold text-indigo-600 uppercase tracking-wider block">Buổi học sắp tới</span>
-            <span className="text-2xl font-black text-indigo-700 mt-0.5 block tabular-nums">{upcomingCount}</span>
-          </div>
-          <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-200/60 flex items-center justify-center text-indigo-600">
-            <Clock className="w-5 h-5" />
-          </div>
-        </div>
-
-        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
-          <div>
-            <span className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider block">Đã duyệt chính thức</span>
-            <span className="text-2xl font-black text-emerald-700 mt-0.5 block tabular-nums">{confirmedCount}</span>
-          </div>
-          <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200/60 flex items-center justify-center text-emerald-600">
-            <CheckCircle2 className="w-5 h-5" />
-          </div>
-        </div>
-
-        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
-          <div>
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Lịch sử buổi học</span>
-            <span className="text-2xl font-black text-slate-700 mt-0.5 block tabular-nums">{pastCount}</span>
-          </div>
-          <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500">
-            <Calendar className="w-5 h-5" />
-          </div>
-        </div>
-      </div>
-
-      {/* Filter Toolbar: History & Class/Teacher filter */}
-      <div className="bg-white p-3.5 rounded-2xl border border-slate-200/90 shadow-2xs flex flex-col md:flex-row items-center justify-between gap-3">
-        {/* Student Schedule History Tabs (Requirement 1) */}
-        <div className="flex items-center gap-1.5 bg-slate-100/90 p-1 rounded-xl border border-slate-200/60 w-full md:w-auto">
-          <button
-            onClick={() => setHistoryFilter('all')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
-              historyFilter === 'all'
-                ? 'bg-white text-slate-900 shadow-2xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            Tất cả ({schedules.length})
-          </button>
-          <button
-            onClick={() => setHistoryFilter('upcoming')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
-              historyFilter === 'upcoming'
-                ? 'bg-white text-indigo-700 shadow-2xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></span>
-            Lịch sắp tới ({upcomingCount})
-          </button>
-          <button
-            onClick={() => setHistoryFilter('past')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
-              historyFilter === 'past'
-                ? 'bg-white text-slate-900 shadow-2xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            Lịch sử buổi học đã qua ({pastCount})
-          </button>
-        </div>
-
-        {/* Dropdown Filters */}
-        <div className="flex items-center gap-2 w-full md:w-auto justify-end">
-          <select
-            value={selectedClassId}
-            onChange={(e) => setSelectedClassId(e.target.value)}
-            className="border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-slate-700 bg-white font-medium outline-hidden hover:border-slate-300 cursor-pointer shadow-2xs"
-          >
-            <option value="">-- Tất cả lớp học --</option>
-            {classesList.map(c => (
-              <option key={c.id} value={c.id}>{c.class_code} - {c.course_title}</option>
-            ))}
-          </select>
-
-          <select
-            value={selectedTeacherId}
-            onChange={(e) => setSelectedTeacherId(e.target.value)}
-            className="border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-slate-700 bg-white font-medium outline-hidden hover:border-slate-300 cursor-pointer shadow-2xs"
-          >
-            <option value="">-- Tất cả giáo viên --</option>
-            {teachers.map(t => (
-              <option key={t.id} value={t.id}>{t.full_name}</option>
-            ))}
-          </select>
-        </div>
-      </div>
+        </div>,
+        headerSlot
+      )}
 
       {/* Timetable Weekly Matrix View (Requirement 2) */}
       {viewMode === 'grid' && (
@@ -850,110 +754,6 @@ export const SchedulesView = () => {
               </tbody>
             </table>
           </div>
-        </div>
-      )}
-
-      {/* Live Conflict Checker Standalone Box */}
-      {canManage && (
-        <div className="bg-gradient-to-br from-white to-indigo-50/30 rounded-3xl border border-indigo-100 p-6 shadow-2xs">
-          <div className="flex items-center gap-2 text-indigo-900 font-extrabold text-sm mb-1.5">
-            <ShieldCheck className="w-4 h-4 text-indigo-600" />
-            Công cụ phát hiện xung đột lịch thông minh thời gian thực
-          </div>
-          <p className="text-xs text-slate-500 mb-5 leading-relaxed">
-            Hệ thống tự động rà soát va chạm thời gian giữa phòng học và giáo viên phụ trách để ngăn chặn xếp trùng lịch.
-          </p>
-
-          <form onSubmit={handleTestConflict} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 text-xs">
-            <div>
-              <label className="font-bold text-slate-700 block mb-1">Phòng học kiểm tra:</label>
-              <select
-                value={checkForm.classroom_id}
-                onChange={(e) => setCheckForm({ ...checkForm, classroom_id: Number(e.target.value) })}
-                className="w-full border border-slate-300 p-2.5 rounded-xl bg-white font-medium outline-hidden focus:border-indigo-600"
-              >
-                {classrooms.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.room_code} ({r.building})
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="font-bold text-slate-700 block mb-1">Giảng viên giảng dạy:</label>
-              <select
-                value={checkForm.teacher_id}
-                onChange={(e) => setCheckForm({ ...checkForm, teacher_id: Number(e.target.value) })}
-                className="w-full border border-slate-300 p-2.5 rounded-xl bg-white font-medium outline-hidden focus:border-indigo-600"
-              >
-                {teachers.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.full_name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="font-bold text-slate-700 block mb-1">Ngày học dự kiến:</label>
-              <input
-                type="date"
-                value={checkForm.session_date}
-                onChange={(e) => setCheckForm({ ...checkForm, session_date: e.target.value })}
-                className="w-full border border-slate-300 p-2.5 rounded-xl bg-white font-medium outline-hidden focus:border-indigo-600"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="font-bold text-slate-700 block mb-1">Bắt đầu:</label>
-                <input
-                  type="text"
-                  value={checkForm.start_time}
-                  onChange={(e) => setCheckForm({ ...checkForm, start_time: e.target.value })}
-                  className="w-full border border-slate-300 p-2.5 rounded-xl bg-white font-mono font-medium outline-hidden focus:border-indigo-600 text-center"
-                />
-              </div>
-              <div>
-                <label className="font-bold text-slate-700 block mb-1">Kết thúc:</label>
-                <input
-                  type="text"
-                  value={checkForm.end_time}
-                  onChange={(e) => setCheckForm({ ...checkForm, end_time: e.target.value })}
-                  className="w-full border border-slate-300 p-2.5 rounded-xl bg-white font-mono font-medium outline-hidden focus:border-indigo-600 text-center"
-                />
-              </div>
-            </div>
-            <div className="flex items-end">
-              <button
-                type="submit"
-                className="w-full bg-slate-900 hover:bg-slate-800 text-white p-2.5 rounded-xl font-bold transition shadow-xs cursor-pointer"
-              >
-                Kiểm tra xung đột
-              </button>
-            </div>
-          </form>
-
-          {/* Conflict Result Banner */}
-          {conflictResult && (
-            <div
-              className={`mt-4 p-4 rounded-2xl border text-xs flex items-start gap-3 transition-all ${
-                conflictResult.has_conflict
-                  ? 'bg-rose-50 border-rose-200 text-rose-900'
-                  : 'bg-emerald-50 border-emerald-200 text-emerald-900'
-              }`}
-            >
-              {conflictResult.has_conflict ? (
-                <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
-              ) : (
-                <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-              )}
-              <div>
-                <span className="font-extrabold text-sm block">
-                  {conflictResult.has_conflict ? 'Phát hiện xung đột lịch học!' : 'Lịch hoàn toàn hợp lệ!'}
-                </span>
-                <p className="mt-1 leading-relaxed">{conflictResult.message}</p>
-              </div>
-            </div>
-          )}
         </div>
       )}
 

@@ -95,15 +95,27 @@ class ClassService:
         db: Session, 
         q: Optional[str] = None, 
         course_id: Optional[int] = None, 
-        status: Optional[str] = None
+        status: Optional[str] = None,
+        student_id: Optional[int] = None
     ) -> List[dict]:
         query = db.query(Class).filter(Class.is_deleted == False)
+        if student_id is not None:
+            enrolled_class_ids = [
+                cs.class_id for cs in db.query(ClassStudent).filter(
+                    ClassStudent.student_id == student_id,
+                    ClassStudent.is_deleted == False
+                ).all()
+            ]
+            query = query.filter(Class.id.in_(enrolled_class_ids))
         if q:
             query = query.filter(Class.class_code.ilike(f"%{q}%"))
         if course_id:
             query = query.filter(Class.course_id == course_id)
         if status:
-            query = query.filter(Class.status == status)
+            if student_id is not None and status == "IN_PROGRESS":
+                query = query.filter(Class.status.in_(["OPEN_FOR_ENROLLMENT", "IN_PROGRESS"]))
+            else:
+                query = query.filter(Class.status == status)
         
         return [ClassService._format_class_response(c) for c in query.all()]
 

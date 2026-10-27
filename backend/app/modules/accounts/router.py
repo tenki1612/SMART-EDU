@@ -137,6 +137,72 @@ def toggle_user_lock(
     user, msg = AccountService.toggle_user_lock(db, user_id, current_admin_id)
     return ApiResponse(data=user, message=msg)
 
+@router.get("/{user_id}/related-students", response_model=ApiResponse[List[dict]], summary="Xem danh sách học sinh liên quan đến tài khoản (Yêu cầu 5)")
+def get_related_students(
+    user_id: int,
+    db: Session = Depends(get_db),
+    _ = Depends(require_roles([RoleEnum.ADMIN, RoleEnum.ACADEMIC_STAFF]))
+):
+    target_user = db.query(User).filter(User.id == user_id, User.is_deleted == False).first()
+    if not target_user:
+        raise NotFoundException("Tài khoản", user_id)
+    
+    related = []
+    # 1. PHỤ HUYNH: tìm các con được giám hộ
+    if target_user.role == RoleEnum.PARENT:
+        from app.modules.progression_parent.models import ParentStudent
+        links = db.query(ParentStudent).filter(ParentStudent.parent_user_id == user_id).all()
+        for l in links:
+            st = l.student
+            if st and not st.is_deleted:
+                u = st.user
+                related.append({
+                    "student_id": st.id,
+                    "student_code": st.student_code,
+                    "full_name": u.full_name if u else st.student_code,
+                    "email": u.email if u else "",
+                    "relation": "Con em / Người được giám hộ",
+                    "status": st.status
+                })
+    # 2. GIẢNG VIÊN: tìm học sinh trong các lớp đang dạy
+    elif target_user.role == RoleEnum.TEACHER:
+        from app.modules.teachers.models import Teacher
+        from app.modules.classes.models import Class, ClassStudent
+        teacher = db.query(Teacher).filter(Teacher.user_id == user_id, Teacher.is_deleted == False).first()
+        if teacher:
+            classes = db.query(Class).filter(Class.teacher_id == teacher.id, Class.is_deleted == False).all()
+            seen_st_ids = set()
+            for c in classes:
+                cs_list = db.query(ClassStudent).filter(ClassStudent.class_id == c.id, ClassStudent.is_deleted == False).all()
+                for cs in cs_list:
+                    st = cs.student
+                    if st and not st.is_deleted and st.id not in seen_st_ids:
+                        seen_st_ids.add(st.id)
+                        u = st.user
+                        related.append({
+                            "student_id": st.id,
+                            "student_code": st.student_code,
+                            "full_name": u.full_name if u else st.student_code,
+                            "email": u.email if u else "",
+                            "relation": f"Học viên lớp {c.class_code}",
+                            "status": st.status
+                        })
+    # 3. HỌC VIÊN: thông tin hồ sơ của chính học viên này
+    elif target_user.role == RoleEnum.STUDENT:
+        from app.modules.students.models import Student
+        st = db.query(Student).filter(Student.user_id == user_id, Student.is_deleted == False).first()
+        if st:
+            related.append({
+                "student_id": st.id,
+                "student_code": st.student_code,
+                "full_name": target_user.full_name,
+                "email": target_user.email,
+                "relation": "Học viên sở hữu tài khoản",
+                "status": st.status
+            })
+
+    return ApiResponse(data=related, message="Danh sách học sinh liên quan")
+
 @router.post("/{user_id}/reset-password", response_model=ApiResponse[bool], summary="Quản trị viên đặt lại mật khẩu cho tài khoản")
 def admin_reset_password(
     user_id: int,

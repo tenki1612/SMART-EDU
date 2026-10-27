@@ -89,6 +89,10 @@ export const accountsApi = {
         const res = await apiClient.post(`/accounts/${id}/reset-password`, { new_password });
         return res.data;
     },
+    getRelatedStudents: async (userId) => {
+        const res = await apiClient.get(`/accounts/${userId}/related-students`);
+        return res.data;
+    },
     getMe: async () => {
         const res = await apiClient.get('/accounts/me');
         return res.data;
