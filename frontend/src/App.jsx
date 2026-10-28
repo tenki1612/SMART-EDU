@@ -26,6 +26,7 @@ import {
   ArrowUpRight,
   FileSpreadsheet,
   Award,
+  UserCheck,
   Users,
   GraduationCap,
   ShieldAlert,
@@ -41,7 +42,7 @@ const tabMetadata = {
   classes: { group: 'Chương trình & Đào tạo', label: 'Lớp học', icon: School },
   classrooms: { group: 'Chương trình & Đào tạo', label: 'Phòng học & Cơ sở', icon: DoorOpen },
   schedules: { group: 'Lịch học & Đào tạo', label: 'Thời khóa biểu', icon: CalendarDays },
-  enrollments: { group: 'Đánh giá & Tiến độ', label: 'Chuyển khóa học', icon: ArrowUpRight },
+  enrollments: { group: 'Lịch học & Tuyển sinh', label: 'Đăng ký lớp học', icon: UserCheck },
   grades: { group: 'Đánh giá & Tiến độ', label: 'Sổ điểm & Kết quả', icon: FileSpreadsheet },
   progression: { group: 'Đánh giá & Tiến độ', label: 'Chuyển khóa học', icon: ArrowUpRight },
   students: { group: 'Quản trị & Nhân sự', label: 'Hồ sơ Học viên', icon: Users },
@@ -74,7 +75,7 @@ const MainApp = () => {
   // Đồng bộ tab sang thanh địa chỉ (Address bar query parameter: ?tab=...)
   const handleTabChange = useCallback((newTab) => {
     let targetTab = newTab;
-    if (user?.role === 'TEACHER' && targetTab === 'courses') {
+    if (['TEACHER', 'STUDENT'].includes(user?.role) && targetTab === 'courses') {
       targetTab = 'dashboard';
     }
     setCurrentTab(targetTab);
@@ -94,7 +95,7 @@ const MainApp = () => {
         const params = new URLSearchParams(window.location.search);
         const tabParam = params.get('tab');
         if (tabParam && tabMetadata[tabParam]) {
-          if (user?.role === 'TEACHER' && tabParam === 'courses') {
+          if (['TEACHER', 'STUDENT'].includes(user?.role) && tabParam === 'courses') {
             setCurrentTab('dashboard');
           } else {
             setCurrentTab(tabParam);
@@ -116,7 +117,7 @@ const MainApp = () => {
       const params = new URLSearchParams(window.location.search);
       const tabParam = params.get('tab');
       if (tabParam && tabMetadata[tabParam]) {
-        if (user?.role === 'TEACHER' && tabParam === 'courses') {
+        if (['TEACHER', 'STUDENT'].includes(user?.role) && tabParam === 'courses') {
           handleTabChange('dashboard');
         } else {
           setCurrentTab(tabParam);
@@ -156,6 +157,7 @@ const MainApp = () => {
       case 'schedules':
         return <SchedulesView />;
       case 'enrollments':
+        return <EnrollmentsView />;
       case 'progression':
         return <ProgressionParentView />;
       case 'grades':

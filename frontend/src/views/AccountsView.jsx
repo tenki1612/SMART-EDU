@@ -513,7 +513,6 @@ export const AccountsView = () => {
                               <span className="font-mono text-[11px] font-bold text-indigo-600 bg-indigo-50/70 px-1.5 py-0.2 rounded-md">
                                 @{u.username}
                               </span>
-                              <span className="text-[10px] text-slate-400 font-mono">#{u.id}</span>
                             </div>
                           </div>
                         </div>
@@ -609,7 +608,7 @@ export const AccountsView = () => {
                           )}
 
                           {/* XEM HỌC SINH LIÊN QUAN (Yêu cầu 5) */}
-                          {['PARENT', 'TEACHER', 'STUDENT'].includes(u.role) && (
+                          {u.role === 'PARENT' && (
                             <button
                               onClick={() => handleOpenRelatedStudents(u)}
                               className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition cursor-pointer border border-slate-200/80 hover:border-indigo-200 active:scale-95"
@@ -984,26 +983,6 @@ export const AccountsView = () => {
                   onChange={(e) => setEditUserForm({ ...editUserForm, phone: e.target.value })}
                   className="w-full border border-slate-300 p-2.5 rounded-xl font-medium outline-hidden focus:border-indigo-600"
                 />
-              </div>
-
-              <div>
-                <label className="font-bold text-slate-700 block mb-1">Đường dẫn ảnh đại diện (Avatar URL):</label>
-                <div className="flex items-center gap-3">
-                  <UserAvatar
-                    avatarUrl={editUserForm.avatar_url}
-                    name={editUserForm.full_name}
-                    role={editingUser?.role}
-                    size="md"
-                    shape="rounded-2xl"
-                  />
-                  <input
-                    type="url"
-                    placeholder="https://..."
-                    value={editUserForm.avatar_url}
-                    onChange={(e) => setEditUserForm({ ...editUserForm, avatar_url: e.target.value })}
-                    className="flex-1 border border-slate-300 p-2.5 rounded-xl font-mono text-[11px] outline-hidden focus:border-indigo-600"
-                  />
-                </div>
               </div>
 
               <div className="flex items-center gap-2 pt-1">

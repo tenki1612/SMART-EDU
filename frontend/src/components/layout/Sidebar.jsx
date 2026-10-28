@@ -14,6 +14,7 @@ import {
   ChevronRight,
   Layers,
   ArrowUpRight,
+  UserCheck,
   PanelLeftClose,
   PanelLeftOpen
 } from 'lucide-react';
@@ -39,15 +40,16 @@ export const Sidebar = ({
     {
       groupName: 'CHƯƠNG TRÌNH & ĐÀO TẠO',
       items: [
-        { id: 'courses', label: 'Khóa học', icon: BookOpen, roles: ['ADMIN', 'ACADEMIC_STAFF', 'STUDENT'] },
+        { id: 'courses', label: 'Khóa học', icon: BookOpen, roles: ['ADMIN', 'ACADEMIC_STAFF'] },
         { id: 'classes', label: 'Lớp học', icon: School, roles: ['ADMIN', 'ACADEMIC_STAFF', 'TEACHER', 'STUDENT'] },
         { id: 'classrooms', label: 'Phòng học & Cơ sở', icon: DoorOpen, roles: ['ADMIN', 'ACADEMIC_STAFF', 'TEACHER'] },
       ],
     },
     {
-      groupName: 'LỊCH HỌC & ĐÀO TẠO',
+      groupName: 'LỊCH HỌC & TUYỂN SINH',
       items: [
         { id: 'schedules', label: 'Thời khóa biểu', icon: CalendarDays, roles: ['ADMIN', 'ACADEMIC_STAFF', 'TEACHER', 'STUDENT', 'PARENT'] },
+        { id: 'enrollments', label: 'Đăng ký lớp học', icon: UserCheck, roles: ['ADMIN', 'ACADEMIC_STAFF', 'STUDENT'] },
       ],
     },
     {

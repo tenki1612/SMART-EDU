@@ -26,8 +26,8 @@ export const SchedulesView = () => {
   const [loading, setLoading] = useState(false);
 
   // View & Filter states
-  const isAdmin = user?.role === 'ADMIN';
-  const [viewMode, setViewMode] = useState(user?.role === 'ADMIN' ? 'list' : 'grid'); // Admin mặc định list
+  const isAdmin = canManage;
+  const [viewMode, setViewMode] = useState(canManage ? 'list' : 'grid'); // Admin & NVHV mặc định list
   const [showPersonalOnly, setShowPersonalOnly] = useState(false);
   const [historyFilter, setHistoryFilter] = useState('all'); // 'all' | 'upcoming' | 'past'
   const [selectedClassId, setSelectedClassId] = useState('');

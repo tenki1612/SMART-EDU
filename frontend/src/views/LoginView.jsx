@@ -288,31 +288,6 @@ export const LoginView = () => {
                     )}
                     <div className="flex-1 leading-relaxed">
                       <p>{errorMsg}</p>
-
-                      {/* Action for Not Found: Shortcut to Register */}
-                      {isNotFoundError && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setRegForm({
-                              ...regForm,
-                              username: username.includes('@') ? '' : username,
-                              email: username.includes('@') ? username : '',
-                            });
-                            setAuthMode('register');
-                            setErrorMsg('');
-                            setRegError('');
-                          }}
-                          className="mt-2 inline-flex items-center gap-1.5 text-xs font-bold text-indigo-700 hover:text-indigo-900 underline cursor-pointer"
-                        >
-                          <UserPlus className="w-3.5 h-3.5" />
-                          Chưa có tài khoản? Bấm để Đăng ký tài khoản ngay &rarr;
-                        </button>
-                      )}
-
-
-
-
                     </div>
                   </div>
                 )}
@@ -399,7 +374,7 @@ export const LoginView = () => {
                   {/* Switch to Register */}
                   <div className="mt-5 pt-4 border-t border-slate-100 text-center">
                     <p className="text-xs text-slate-500">
-                      Chưa có tài khoản học viên?{' '}
+                      Chưa có tài khoản?{' ' }
                       <button
                         type="button"
                         onClick={() => {
