@@ -48,7 +48,7 @@ export const ProgressionParentView = () => {
   // Admin/Staff: 'requests' | 'eligibility'
   // Student: 'requests' | 'classes'
   // Parent: 'wards' | 'ward_requests'
-  const defaultSubTab = isParent ? 'wards' : isStudent ? 'requests' : 'requests';
+  const defaultSubTab = isParent ? 'wards' : isStudent ? 'classes' : 'requests';
   const [activeSubTab, setActiveSubTab] = useState(defaultSubTab);
 
   // ---------------------------------------------------------------------------
@@ -61,6 +61,7 @@ export const ProgressionParentView = () => {
 
   // Student Open Classes for Registration
   const [openClasses, setOpenClasses] = useState([]);
+  const [myClasses, setMyClasses] = useState([]);
   const [selectedClassToRegister, setSelectedClassToRegister] = useState(null);
   const [registerNote, setRegisterNote] = useState('');
 
@@ -91,11 +92,13 @@ export const ProgressionParentView = () => {
   const loadData = async () => {
     try {
       if (isStudent) {
-        const [resCls, resReq] = await Promise.all([
+        const [resOpenCls, resMyCls, resReq] = await Promise.all([
           classesApi.list(undefined, 'OPEN_FOR_ENROLLMENT'),
+          classesApi.list(),
           enrollmentsApi.getMyRequests(),
         ]);
-        setOpenClasses(resCls.data || []);
+        setOpenClasses(resOpenCls.data || []);
+        setMyClasses(resMyCls.data || []);
         setRequests(resReq.data || []);
       } else if (isStaffOrAdmin) {
         const [resReq, resSt, resCo] = await Promise.all([
@@ -256,6 +259,11 @@ export const ProgressionParentView = () => {
     });
   }, [requests, searchTerm]);
 
+  // Lọc các lớp mở hợp lệ để chuyển khóa (loại bỏ lớp học viên đang theo học)
+  const transferableClasses = useMemo(() => {
+    return openClasses.filter((cls) => !cls.is_enrolled && !myClasses.some((mc) => mc.id === cls.id));
+  }, [openClasses, myClasses]);
+
   // ---------------------------------------------------------------------------
   // 5. RENDER
   // ---------------------------------------------------------------------------
@@ -299,27 +307,27 @@ export const ProgressionParentView = () => {
             <>
               <button
                 type="button"
-                onClick={() => setActiveSubTab('requests')}
-                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                  activeSubTab === 'requests'
-                    ? 'bg-white text-indigo-600 shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <FileCheck2 className="w-3.5 h-3.5" />
-                <span>Lịch sử chuyển khóa ({requests.length})</span>
-              </button>
-              <button
-                type="button"
                 onClick={() => setActiveSubTab('classes')}
                 className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
                   activeSubTab === 'classes'
-                    ? 'bg-white text-indigo-600 shadow-2xs'
+                    ? 'bg-white text-indigo-600 shadow-2xs font-extrabold'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 <School className="w-3.5 h-3.5" />
-                <span>Lớp mở chuyển khóa ({openClasses.length})</span>
+                <span>Lớp mở chuyển khóa ({transferableClasses.length})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveSubTab('requests')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  activeSubTab === 'requests'
+                    ? 'bg-white text-indigo-600 shadow-2xs font-extrabold'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <FileCheck2 className="w-3.5 h-3.5" />
+                <span>Lịch sử yêu cầu ({requests.length})</span>
               </button>
             </>
           )}
@@ -422,16 +430,65 @@ export const ProgressionParentView = () => {
       {/* SECTION A: STUDENT OPEN CLASSES                                           */}
       {/* ========================================================================= */}
       {isStudent && activeSubTab === 'classes' && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-2">
-              <School className="w-4 h-4 text-indigo-600" />
-              <span>Các khóa học & lớp đang mở chuyển khóa ({openClasses.length})</span>
-            </h3>
-          </div>
+        <div className="space-y-6">
+          {/* Card: Khóa học & Lớp học hiện tại của học viên */}
+          {myClasses.length > 0 && (
+            <div className="bg-gradient-to-r from-indigo-50/80 via-sky-50/40 to-white p-5 rounded-3xl border border-indigo-100 shadow-2xs">
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-xs">
+                    <BookOpen className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-indigo-500 block">Khóa học hiện tại của bạn</span>
+                    <h3 className="text-base font-black text-slate-900 leading-tight">
+                      {myClasses[0].course_title}
+                    </h3>
+                  </div>
+                </div>
+                <span className="text-xs font-bold px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1.5 shadow-2xs">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                  Đang theo học
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs pt-3 border-t border-indigo-100/70">
+                <div className="bg-white/90 p-2.5 rounded-2xl border border-slate-100">
+                  <span className="text-slate-400 font-medium block text-[11px]">Lớp đang học</span>
+                  <span className="font-mono font-black text-indigo-700 text-xs">{myClasses[0].class_code}</span>
+                </div>
+                <div className="bg-white/90 p-2.5 rounded-2xl border border-slate-100">
+                  <span className="text-slate-400 font-medium block text-[11px]">Chuẩn đầu ra</span>
+                  <span className="font-bold text-slate-800 text-xs">{myClasses[0].target_level}</span>
+                </div>
+                <div className="bg-white/90 p-2.5 rounded-2xl border border-slate-100">
+                  <span className="text-slate-400 font-medium block text-[11px]">Giảng viên phụ trách</span>
+                  <span className="font-semibold text-slate-800 text-xs truncate block" title={myClasses[0].teacher_name}>
+                    {myClasses[0].teacher_name || 'Đang phân công'}
+                  </span>
+                </div>
+                <div className="bg-white/90 p-2.5 rounded-2xl border border-slate-100">
+                  <span className="text-slate-400 font-medium block text-[11px]">Sĩ số lớp</span>
+                  <span className="font-bold text-slate-800 text-xs">
+                    {myClasses[0].current_enrolled} / {myClasses[0].max_capacity} học viên
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Danh sách các khóa học tiếp nhận chuyển khóa */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-2">
+                <School className="w-4 h-4 text-indigo-600" />
+                <span>Các khóa học mở tiếp nhận chuyển khóa ({transferableClasses.length})</span>
+              </h3>
+              <span className="text-[11px] text-slate-400 font-medium">Chọn một khóa học bên dưới để gửi đơn</span>
+            </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {openClasses.map((cls) => (
+            {transferableClasses.map((cls) => (
               <div
                 key={cls.id}
                 className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-2xs hover:shadow-md hover:border-indigo-200 transition-all duration-200 flex flex-col justify-between"
@@ -464,7 +521,7 @@ export const ProgressionParentView = () => {
                     className={`px-3.5 py-1.5 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer active:scale-95 ${
                       cls.is_full
                         ? 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
-                        : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                        : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-200'
                     }`}
                   >
                     {cls.is_full ? 'Hết chỗ' : 'Đăng ký chuyển khóa'}
@@ -474,7 +531,8 @@ export const ProgressionParentView = () => {
             ))}
           </div>
         </div>
-      )}
+      </div>
+    )}
 
       {/* ========================================================================= */}
       {/* SECTION B: REQUESTS TABLE (FOR ADMIN, STAFF, AND STUDENT)                 */}
@@ -992,6 +1050,16 @@ export const ProgressionParentView = () => {
 
               <form onSubmit={handleRegister} className="space-y-4 text-xs">
                 <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100 space-y-2">
+                  {myClasses[0] && (
+                    <div className="flex justify-between pb-2 border-b border-slate-200/60">
+                      <span className="text-slate-500">Khóa hiện tại:</span>
+                      <span className="font-bold text-slate-800">{myClasses[0].course_title} ({myClasses[0].class_code})</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Khóa chuyển tới:</span>
+                    <span className="font-bold text-indigo-700">{selectedClassToRegister.course_title}</span>
+                  </div>
                   <div className="flex justify-between">
                     <span className="text-slate-500">Chuẩn đầu ra:</span>
                     <span className="font-bold text-indigo-600">{selectedClassToRegister.target_level}</span>
@@ -1016,7 +1084,7 @@ export const ProgressionParentView = () => {
                     rows={3}
                     value={registerNote}
                     onChange={(e) => setRegisterNote(e.target.value)}
-                    placeholder="Ví dụ: Em đã hoàn thành khóa tiên quyết và mong muốn chuyển sang lớp này vào ca tối..."
+                    placeholder="Ví dụ: Em đã hoàn thành khóa tiên quyết và mong muốn chuyển sang khóa nâng cao này..."
                     className="w-full border border-slate-200 p-3 rounded-2xl bg-slate-50 focus:bg-white outline-hidden focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 transition resize-none font-medium text-xs"
                   />
                 </div>
@@ -1034,7 +1102,7 @@ export const ProgressionParentView = () => {
                     className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold rounded-xl shadow-md shadow-indigo-200 transition cursor-pointer text-xs flex items-center justify-center gap-1.5"
                   >
                     <Send className="w-3.5 h-3.5" />
-                    <span>Gửi yêu cầu chuyển</span>
+                    <span>Gửi yêu cầu chuyển khóa</span>
                   </button>
                 </div>
               </form>

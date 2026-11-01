@@ -37,6 +37,7 @@ class ClassResponse(BaseModel):
     max_capacity: int
     current_enrolled: int
     is_full: bool
+    is_enrolled: Optional[bool] = False
     start_date: Optional[date] = None
     end_date: Optional[date] = None
     status: str

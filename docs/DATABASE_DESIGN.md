@@ -405,3 +405,62 @@ Phục vụ cổng thông tin phụ huynh giám hộ học viên.
 3. **Ràng buộc Điểm số Hợp lệ (Score Range Constraint):**
    - Tất cả các trường điểm ($attendance$, $midterm$, $final$, $total$) bắt buộc phải nằm trong miền giá trị $[0.0, 10.0]$.
 
+
+
+---
+
+## 4. SCHEMA THIẾT KẾ TRÊN PRISMA ORM (`prisma/schema.prisma`)
+
+Toàn bộ hệ thống cơ sở dữ liệu đã được mô hình hóa chuẩn xác sang schema của **Prisma ORM** (chuẩn 3NF, hỗ trợ PostgreSQL/SQLite/MySQL), tương thích 100% với các bảng, kiểu dữ liệu, quan hệ (1-1, 1-N, N-N), cờ xóa mềm (`is_deleted`) và timestamps (`created_at`, `updated_at`).
+
+File nguồn schema được đặt tại: `prisma/schema.prisma`
+
+### 4.1. Cấu trúc Enums chuẩn hóa
+- `Role`: `ADMIN`, `ACADEMIC_STAFF`, `TEACHER`, `STUDENT`, `PARENT`
+- `StudentStatus`: `ACTIVE`, `INACTIVE`, `SUSPENDED`, `COMPLETED`
+- `TeacherStatus`: `ACTIVE`, `ON_LEAVE`, `INACTIVE`
+- `ClassroomStatus`: `AVAILABLE`, `MAINTENANCE`, `OCCUPIED`
+- `ClassStatus`: `OPEN_FOR_ENROLLMENT`, `IN_PROGRESS`, `COMPLETED`, `CANCELLED`
+- `ClassStudentStatus`: `ENROLLED`, `DROPPED`, `COMPLETED`
+- `EnrollmentStatus`: `PENDING`, `APPROVED`, `REJECTED`, `CANCELLED`
+- `ScheduleStatus`: `SCHEDULED`, `COMPLETED`, `CANCELLED`
+- `ResultStatus`: `PENDING`, `PASSED`, `FAILED`
+
+### 4.2. Danh sách 12 Models và quan hệ thực thể
+1. **`User`** (`@@map("users")`): Quản lý tài khoản, mật khẩu băm Bcrypt, vai trò, số lần đăng nhập sai, khóa tạm thời và mã OTP.
+   - Quan hệ 1-1 với `Student` (`studentProfile`) và `Teacher` (`teacherProfile`).
+   - Quan hệ 1-N với `ParentStudent` (`parentLinks`), `EnrollmentRequest` (`reviewedEnrollments`), `CourseProgression` (`confirmedProgressions`).
+2. **`Course`** (`@@map("courses")`): Danh mục khóa học, chuẩn đầu ra, thời lượng, học phí.
+   - Quan hệ 1-N với `Class`.
+   - Quan hệ 1-N với `CourseProgression` (khóa hiện tại `currentProgressions` & khóa mục tiêu `nextProgressions`).
+3. **`Student`** (`@@map("students")`): Hồ sơ học viên, liên kết 1-1 với `User`.
+   - Quan hệ 1-N với `ClassStudent` (lớp đang học), `EnrollmentRequest` (đơn đăng ký), `GradeRecord` (bảng điểm), `CourseProgression` (chuyển khóa), `ParentStudent` (phụ huynh giám hộ).
+4. **`Teacher`** (`@@map("teachers")`): Hồ sơ giáo viên, chuyên môn, bằng cấp, liên kết 1-1 với `User`.
+   - Quan hệ 1-N với `Class` (lớp phụ trách) và `ScheduleSession` (buổi dạy).
+5. **`Classroom`** (`@@map("classrooms")`): Phòng học, tòa nhà, sức chứa chỗ ngồi.
+   - Quan hệ 1-N với `ScheduleSession`.
+6. **`Class`** (`@@map("classes")`): Lớp học mở, sĩ số tối đa `max_capacity`, sĩ số thực tế `current_enrolled`.
+   - Khóa ngoại tới `Course` và `Teacher`.
+   - Quan hệ 1-N tới `ClassStudent`, `ScheduleSession`, `EnrollmentRequest`, `GradeRecord`.
+7. **`ClassStudent`** (`@@map("class_students")`): Bảng cầu nối Many-to-Many giữa `Class` và `Student`, có ràng buộc `@@unique([classId, studentId])`.
+8. **`EnrollmentRequest`** (`@@map("enrollment_requests")`): Đơn đăng ký lớp học, lý do từ chối `rejection_reason`, nhân viên học vụ xét duyệt `reviewedBy`.
+9. **`ScheduleSession`** (`@@map("schedule_sessions")`): Lịch học theo buổi, phân công `Class`, `Classroom`, `Teacher`, kiểm tra xung đột thời gian.
+10. **`GradeRecord`** (`@@map("grade_records")`): Bảng điểm thành phần (chuyên cần 20%, giữa kỳ 30%, cuối kỳ 50%), tổng kết, khóa sổ điểm `is_confirmed`. Có ràng buộc `@@unique([classId, studentId])`.
+11. **`CourseProgression`** (`@@map("course_progressions")`): Xét điều kiện tiên quyết và chuyển khóa học mục tiêu, xác nhận bởi học vụ.
+12. **`ParentStudent`** (`@@map("parent_students")`): Liên kết tài khoản phụ huynh với học viên được giám hộ. Có ràng buộc `@@unique([parentUserId, studentId])`.
+
+### 4.3. Hướng dẫn khởi tạo và áp dụng vào CSDL
+```bash
+# 1. Cài đặt Prisma CLI (nếu dùng trong dự án Node.js/TypeScript)
+npm install prisma @prisma/client --save-dev
+
+# 2. Định cấu hình chuỗi kết nối trong file .env
+DATABASE_URL="postgresql://postgres:password@localhost:5432/language_center?schema=public"
+# hoặc SQLite: DATABASE_URL="file:./dev.db"
+
+# 3. Tạo migration và cập nhật cấu trúc bảng vào CSDL
+npx prisma migrate dev --name init
+
+# 4. Sinh bộ client tương tác kiểu dữ liệu an toàn (Type-safe Client)
+npx prisma generate
+```

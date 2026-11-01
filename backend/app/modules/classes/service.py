@@ -10,7 +10,7 @@ from app.modules.classes.schemas import ClassCreate, ClassUpdate, ClassRosterStu
 
 class ClassService:
     @staticmethod
-    def _format_class_response(cls: Class) -> dict:
+    def _format_class_response(cls: Class, is_enrolled: bool = False) -> dict:
         teacher_name = cls.teacher.user.full_name if (cls.teacher and cls.teacher.user) else None
         course_title = cls.course.title if cls.course else None
         target_level = cls.course.target_level if cls.course else None
@@ -25,6 +25,7 @@ class ClassService:
             "max_capacity": cls.max_capacity,
             "current_enrolled": cls.current_enrolled,
             "is_full": cls.current_enrolled >= cls.max_capacity,
+            "is_enrolled": is_enrolled,
             "start_date": cls.start_date,
             "end_date": cls.end_date,
             "status": cls.status
@@ -99,14 +100,19 @@ class ClassService:
         student_id: Optional[int] = None
     ) -> List[dict]:
         query = db.query(Class).filter(Class.is_deleted == False)
+        enrolled_ids = set()
         if student_id is not None:
-            enrolled_class_ids = [
-                cs.class_id for cs in db.query(ClassStudent).filter(
+            enrolled_ids = {
+                cs.class_id for cs in db.query(ClassStudent.class_id).filter(
                     ClassStudent.student_id == student_id,
                     ClassStudent.is_deleted == False
                 ).all()
-            ]
-            query = query.filter(Class.id.in_(enrolled_class_ids))
+            }
+            # When student explicitly filters for OPEN_FOR_ENROLLMENT (for transfer / enrollment),
+            # allow seeing all open classes. Otherwise, isolate to their enrolled classes.
+            if status != "OPEN_FOR_ENROLLMENT":
+                query = query.filter(Class.id.in_(enrolled_ids))
+
         if q:
             query = query.filter(Class.class_code.ilike(f"%{q}%"))
         if course_id:
@@ -117,7 +123,7 @@ class ClassService:
             else:
                 query = query.filter(Class.status == status)
         
-        return [ClassService._format_class_response(c) for c in query.all()]
+        return [ClassService._format_class_response(c, is_enrolled=(c.id in enrolled_ids)) for c in query.all()]
 
     @staticmethod
     def get_class_detail(db: Session, class_id: int) -> dict:

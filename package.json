@@ -1,0 +1,25 @@
+{
+  "name": "smart-edu-lms",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:push": "prisma db push",
+    "prisma:seed": "prisma db seed",
+    "prisma:studio": "prisma studio",
+    "prisma:sqlite:push": "prisma db push --schema=prisma/schema.sqlite.prisma",
+    "prisma:sqlite:studio": "prisma studio --schema=prisma/schema.sqlite.prisma"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.js"
+  },
+  "devDependencies": {
+    "prisma": "^6.4.1"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.4.1"
+  }
+}
+

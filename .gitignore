@@ -53,6 +53,8 @@ Thumbs.db
 
 # SQLite temporary journal files
 *.db-journal
+prisma/*.db
+prisma/*.db-journal
 
 # Uploaded media files
 backend/uploads/avatars/*

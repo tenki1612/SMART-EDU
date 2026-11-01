@@ -77,7 +77,7 @@ def seed_database():
         )
         student_profile = Student(
             user_id=user_student.id,
-            student_code="HV2026-001",
+            student_code="26-04001",
             date_of_birth=date(2005, 5, 15),
             address="123 Nguyễn Văn Cừ, Quận 5, TP.HCM",
             status="ACTIVE"
@@ -144,6 +144,16 @@ def seed_database():
             status="OPEN_FOR_ENROLLMENT"
         )
         cls2 = Class(
+            class_code="IELTS-75-K26A",
+            course_id=c2.id,
+            teacher_id=teacher_profile.id,
+            max_capacity=20,
+            current_enrolled=0,
+            start_date=date(2026, 11, 20),
+            end_date=date(2027, 2, 20),
+            status="OPEN_FOR_ENROLLMENT"
+        )
+        cls3 = Class(
             class_code="TOEIC-750-K12",
             course_id=c3.id,
             teacher_id=teacher_profile.id,
@@ -153,7 +163,7 @@ def seed_database():
             end_date=date(2027, 1, 15),
             status="OPEN_FOR_ENROLLMENT"
         )
-        db.add_all([cls1, cls2])
+        db.add_all([cls1, cls2, cls3])
         db.commit()
 
         # Enroll student into cls1

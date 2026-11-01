@@ -11,6 +11,17 @@ import {
   LayoutGrid, List, Ban, X, Filter, Sparkles
 } from 'lucide-react';
 
+// Helper to safely format Date to YYYY-MM-DD in local timezone (avoids UTC toISOString shift)
+const toLocalDateStr = (date) => {
+  if (!date) return '';
+  const d = date instanceof Date ? date : new Date(date);
+  if (isNaN(d.getTime())) return '';
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
 export const SchedulesView = () => {
   const { user } = useAuth();
   const toast = useToast();
@@ -54,7 +65,7 @@ export const SchedulesView = () => {
     class_id: '',
     classroom_id: '',
     teacher_id: '',
-    session_date: new Date().toISOString().split('T')[0],
+    session_date: toLocalDateStr(new Date()),
     start_time: '18:00',
     end_time: '20:00',
     slot_name: 'Ca tối (18:00 - 20:00)',
@@ -77,7 +88,7 @@ export const SchedulesView = () => {
   const [checkForm, setCheckForm] = useState({
     classroom_id: 1,
     teacher_id: 1,
-    session_date: new Date().toISOString().split('T')[0],
+    session_date: toLocalDateStr(new Date()),
     start_time: '18:00',
     end_time: '20:00',
   });
@@ -141,7 +152,7 @@ export const SchedulesView = () => {
     return days;
   }, [currentWeekStart]);
 
-  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const todayStr = useMemo(() => toLocalDateStr(new Date()), []);
 
   // Filtered schedules (all active schedules)
   const filteredSchedules = schedules;
@@ -481,7 +492,7 @@ export const SchedulesView = () => {
                       Ca học
                     </th>
                     {weekDays.map((d, i) => {
-                      const dStr = d.toISOString().split('T')[0];
+                      const dStr = toLocalDateStr(d);
                       const isToday = dStr === todayStr;
                       return (
                         <th
@@ -510,7 +521,7 @@ export const SchedulesView = () => {
 
                       {/* 7 Days columns */}
                       {weekDays.map((d, dayIdx) => {
-                        const dateStr = d.toISOString().split('T')[0];
+                        const dateStr = toLocalDateStr(d);
                         const isToday = dateStr === todayStr;
 
                         // Find sessions matching this date and time range
@@ -661,7 +672,7 @@ export const SchedulesView = () => {
                         <td className="p-4 font-bold text-slate-900">
                           <div className="flex items-center gap-1.5">
                             <span>
-                              {new Date(s.session_date).toLocaleDateString('vi-VN', {
+                              {new Date(s.session_date.includes('T') ? s.session_date : s.session_date + 'T00:00:00').toLocaleDateString('vi-VN', {
                                 weekday: 'short',
                                 year: 'numeric',
                                 month: 'numeric',

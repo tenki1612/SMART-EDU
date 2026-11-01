@@ -508,12 +508,7 @@ export const DashboardView = ({ onTabChange = () => {} }) => {
   // 3. STUDENT DASHBOARD (Khớp 100% layout cổng sinh viên tham chiếu)
   // -------------------------------------------------------------------------
   if (isStudent) {
-    const passedCount = studentGrades.filter(g => g.result_status === 'PASSED').length;
-    const avgScore = studentGrades.length > 0
-      ? (studentGrades.reduce((acc, curr) => acc + (curr.total_score || 0), 0) / studentGrades.length).toFixed(1)
-      : '--';
 
-    const primaryClass = studentClasses[0] || {};
 
     return (
       <div className="space-y-5">
@@ -538,7 +533,7 @@ export const DashboardView = ({ onTabChange = () => {} }) => {
           <div className="px-5 py-3 border-b border-indigo-100/70 bg-gradient-to-r from-slate-50/80 to-indigo-50/20 flex items-center justify-between">
             <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
               <User className="w-4 h-4 text-indigo-600" />
-              <span>Thông tin sinh viên</span>
+              <span>Thông tin học viên</span>
             </div>
             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
               Đang học
@@ -567,11 +562,11 @@ export const DashboardView = ({ onTabChange = () => {} }) => {
               {/* Column 1 */}
               <div className="space-y-2">
                 <div className="flex items-baseline justify-between border-b border-slate-100 pb-1">
-                  <span className="text-slate-500 font-medium">Mã SV:</span>
-                  <span className="font-mono font-bold text-slate-900">{user?.student_code || '3124410033'}</span>
+                  <span className="text-slate-500 font-medium">Mã học viên:</span>
+                  <span className="font-mono font-bold text-slate-900">{user?.student_code || '26-04001'}</span>
                 </div>
                 <div className="flex items-baseline justify-between border-b border-slate-100 pb-1">
-                  <span className="text-slate-500 font-medium">Tên sinh viên:</span>
+                  <span className="text-slate-500 font-medium">Tên học viên:</span>
                   <span className="font-bold text-slate-900">{user?.full_name}</span>
                 </div>
                 <div className="flex items-baseline justify-between border-b border-slate-100 pb-1">
@@ -628,64 +623,7 @@ export const DashboardView = ({ onTabChange = () => {} }) => {
                     {user?.address || 'Số nhà 96 thôn 7, Xã Bù Đăng...'}
                   </span>
                 </div>
-                <div className="flex items-baseline justify-between border-b border-slate-100 pb-1">
-                  <span className="text-slate-500 font-medium">Điểm TB (GPA):</span>
-                  <span className="font-mono font-black text-indigo-600">{avgScore} / 10</span>
-                </div>
-                <div className="flex items-baseline justify-between border-b border-slate-100 pb-1">
-                  <span className="text-slate-500 font-medium">Số môn đã Đạt:</span>
-                  <span className="font-bold text-emerald-600">{passedCount} môn</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
 
-        {/* =================================================================== */}
-        {/* CARD 2: THÔNG TIN KHÓA HỌC (CHÍNH XÁC NHƯ MẪU HÌNH ẢNH)             */}
-        {/* =================================================================== */}
-        <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
-          <div className="px-5 py-3 border-b border-indigo-100/70 bg-gradient-to-r from-slate-50/80 to-indigo-50/20 flex items-center justify-between">
-            <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
-              <BookOpen className="w-4 h-4 text-indigo-600" />
-              <span>Thông tin khóa học</span>
-            </div>
-            <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100">
-              {primaryClass.target_level || 'IELTS 6.5+'}
-            </span>
-          </div>
-
-          <div className="p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-y-2.5 gap-x-6 text-xs">
-            <div className="space-y-2">
-              <div className="flex items-baseline justify-between border-b border-slate-100 pb-1">
-                <span className="text-slate-500 font-medium">Lớp:</span>
-                <span className="font-mono font-bold text-indigo-700">{primaryClass.class_code || 'DCT1243'}</span>
-              </div>
-              <div className="flex items-baseline justify-between border-b border-slate-100 pb-1">
-                <span className="text-slate-500 font-medium">Ngành:</span>
-                <span className="font-bold text-slate-800">{primaryClass.course_title || 'Công nghệ thông tin'}</span>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-baseline justify-between border-b border-slate-100 pb-1">
-                <span className="text-slate-500 font-medium">Khoa / Trung tâm:</span>
-                <span className="text-slate-800">Khoa Công nghệ thông tin</span>
-              </div>
-              <div className="flex items-baseline justify-between border-b border-slate-100 pb-1">
-                <span className="text-slate-500 font-medium">Bậc hệ đào tạo:</span>
-                <span className="text-slate-800">Đại học chính quy</span>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-baseline justify-between border-b border-slate-100 pb-1">
-                <span className="text-slate-500 font-medium">Niên khóa:</span>
-                <span className="font-mono text-slate-800">2024-2029</span>
-              </div>
-              <div className="flex items-baseline justify-between border-b border-slate-100 pb-1">
-                <span className="text-slate-500 font-medium">Cố vấn / Giảng viên:</span>
-                <span className="font-bold text-slate-800">{primaryClass.teacher_name || 'ThS. Nguyễn Văn A'}</span>
               </div>
             </div>
           </div>

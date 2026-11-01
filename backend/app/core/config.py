@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from typing import List
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 _BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -16,12 +17,19 @@ class Settings(BaseSettings):
     # SQLite default pointing reliably to backend/language_center.db
     DATABASE_URL: str = f"sqlite:///{_DEFAULT_DB.as_posix()}"
     
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def sanitize_database_url(cls, v):
+        # Bỏ qua nếu là URL dạng Prisma "file:./dev.db" để tránh lỗi SQLAlchemy
+        if isinstance(v, str) and (v.startswith("file:") or not v.strip()):
+            return f"sqlite:///{_DEFAULT_DB.as_posix()}"
+        return v
+    
     # CORS
     BACKEND_CORS_ORIGINS: List[str] = ["http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173", "*"]
 
     class Config:
         case_sensitive = True
-        env_file = ".env"
+        env_file = str(_BASE_DIR / ".env")
 
 settings = Settings()
-
