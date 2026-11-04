@@ -1,383 +1,270 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql" // Hoặc "sqlite" / "mysql" tùy theo cơ sở dữ liệu bạn lựa chọn
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-// =============================================================================
-// ENUMS (Định nghĩa kiểu liệt kê cho các trạng thái chuẩn hóa)
-// =============================================================================
+/// 1. Bảng User: Tài khoản người dùng & bảo mật đăng nhập
+model User {
+  username              String              @unique(map: "ix_users_username") @db.VarChar(50)
+  email                 String              @unique(map: "ix_users_email") @db.VarChar(100)
+  fullName              String              @map("full_name") @db.VarChar(100)
+  hashedPassword        String              @map("hashed_password") @db.VarChar(255)
+  role                  roleenum
+  phone                 String?             @db.VarChar(20)
+  avatarUrl             String?             @map("avatar_url") @db.VarChar(500)
+  isActive              Boolean?            @map("is_active")
+  failedLoginAttempts   Int                 @map("failed_login_attempts")
+  lockedUntil           DateTime?           @map("locked_until") @db.Timestamp(6)
+  resetToken            String?             @map("reset_token") @db.VarChar(100)
+  resetTokenExpiresAt   DateTime?           @map("reset_token_expires_at") @db.Timestamp(6)
+  id                    Int                 @id @default(autoincrement())
+  createdAt             DateTime?           @map("created_at") @db.Timestamp(6)
+  updatedAt             DateTime?           @updatedAt @map("updated_at") @db.Timestamp(6)
+  isDeleted             Boolean?            @map("is_deleted")
+  confirmedProgressions CourseProgression[] @relation("ConfirmedByUser")
+  reviewedEnrollments   EnrollmentRequest[] @relation("ReviewedByUser")
+  parentLinks           ParentStudent[]     @relation("ParentUser")
+  studentProfile        Student?
+  teacherProfile        Teacher?
 
-enum Role {
+  @@index([id], map: "ix_users_id")
+  @@map("users")
+}
+
+/// 2. Bảng Course: Chương trình đào tạo & Chuẩn đầu ra
+model Course {
+  code                String              @unique(map: "ix_courses_code") @db.VarChar(50)
+  title               String              @db.VarChar(150)
+  description         String?
+  targetLevel         String              @map("target_level") @db.VarChar(100)
+  durationWeeks       Int?                @map("duration_weeks")
+  fee                 Float?
+  isActive            Boolean?            @map("is_active")
+  id                  Int                 @id @default(autoincrement())
+  createdAt           DateTime?           @map("created_at") @db.Timestamp(6)
+  updatedAt           DateTime?           @updatedAt @map("updated_at") @db.Timestamp(6)
+  isDeleted           Boolean?            @map("is_deleted")
+  classes             Class[]
+  currentProgressions CourseProgression[] @relation("CurrentCourse")
+  nextProgressions    CourseProgression[] @relation("NextCourse")
+
+  @@index([id], map: "ix_courses_id")
+  @@map("courses")
+}
+
+/// 3. Bảng Student: Hồ sơ cá nhân của học viên (1-1 với User)
+model Student {
+  userId             Int                 @unique @map("user_id")
+  studentCode        String              @unique(map: "ix_students_student_code") @map("student_code") @db.VarChar(50)
+  dateOfBirth        DateTime?           @map("date_of_birth") @db.Date
+  address            String?             @db.VarChar(255)
+  status             String?             @db.VarChar(50)
+  id                 Int                 @id @default(autoincrement())
+  createdAt          DateTime?           @map("created_at") @db.Timestamp(6)
+  updatedAt          DateTime?           @updatedAt @map("updated_at") @db.Timestamp(6)
+  isDeleted          Boolean?            @map("is_deleted")
+  classEnrollments   ClassStudent[]
+  progressions       CourseProgression[]
+  enrollmentRequests EnrollmentRequest[]
+  grades             GradeRecord[]
+  parents            ParentStudent[]
+  user               User                @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([id], map: "ix_students_id")
+  @@map("students")
+}
+
+/// 4. Bảng Teacher: Hồ sơ chuyên môn của giáo viên (1-1 với User)
+model Teacher {
+  userId      Int               @unique @map("user_id")
+  teacherCode String            @unique(map: "ix_teachers_teacher_code") @map("teacher_code") @db.VarChar(50)
+  specialty   String?           @db.VarChar(100)
+  degree      String?           @db.VarChar(100)
+  status      String?           @db.VarChar(50)
+  id          Int               @id @default(autoincrement())
+  createdAt   DateTime?         @map("created_at") @db.Timestamp(6)
+  updatedAt   DateTime?         @updatedAt @map("updated_at") @db.Timestamp(6)
+  isDeleted   Boolean?          @map("is_deleted")
+  classes     Class[]
+  schedules   ScheduleSession[]
+  user        User              @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([id], map: "ix_teachers_id")
+  @@map("teachers")
+}
+
+/// 5. Bảng Classroom: Cơ sở vật chất & Sức chứa phòng học
+model Classroom {
+  roomCode  String            @unique(map: "ix_classrooms_room_code") @map("room_code") @db.VarChar(50)
+  building  String?           @db.VarChar(50)
+  capacity  Int?
+  status    String?           @db.VarChar(50)
+  id        Int               @id @default(autoincrement())
+  createdAt DateTime?         @map("created_at") @db.Timestamp(6)
+  updatedAt DateTime?         @updatedAt @map("updated_at") @db.Timestamp(6)
+  isDeleted Boolean?          @map("is_deleted")
+  schedules ScheduleSession[]
+
+  @@index([id], map: "ix_classrooms_id")
+  @@map("classrooms")
+}
+
+/// 6. Bảng Class: Quản lý lớp học, sĩ số & giáo viên phụ trách
+model Class {
+  classCode       String              @unique(map: "ix_classes_class_code") @map("class_code") @db.VarChar(50)
+  courseId        Int                 @map("course_id")
+  teacherId       Int?                @map("teacher_id")
+  maxCapacity     Int?                @map("max_capacity")
+  currentEnrolled Int?                @map("current_enrolled")
+  startDate       DateTime?           @map("start_date") @db.Date
+  endDate         DateTime?           @map("end_date") @db.Date
+  status          String?             @db.VarChar(50)
+  id              Int                 @id @default(autoincrement())
+  createdAt       DateTime?           @map("created_at") @db.Timestamp(6)
+  updatedAt       DateTime?           @updatedAt @map("updated_at") @db.Timestamp(6)
+  isDeleted       Boolean?            @map("is_deleted")
+  students        ClassStudent[]
+  course          Course              @relation(fields: [courseId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  teacher         Teacher?            @relation(fields: [teacherId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  enrollments     EnrollmentRequest[]
+  grades          GradeRecord[]
+  schedules       ScheduleSession[]
+
+  @@index([id], map: "ix_classes_id")
+  @@map("classes")
+}
+
+/// 7. Bảng ClassStudent: Danh sách thành viên lớp học (Many-to-Many Class & Student)
+model ClassStudent {
+  classId       Int       @map("class_id")
+  studentId     Int       @map("student_id")
+  enrolledAt    DateTime? @map("enrolled_at") @db.Timestamp(6)
+  status        String?   @db.VarChar(50)
+  id            Int       @id @default(autoincrement())
+  createdAt     DateTime? @map("created_at") @db.Timestamp(6)
+  updatedAt     DateTime? @updatedAt @map("updated_at") @db.Timestamp(6)
+  isDeleted     Boolean?  @map("is_deleted")
+  enrolledClass Class     @relation(fields: [classId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  student       Student   @relation(fields: [studentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([id], map: "ix_class_students_id")
+  @@map("class_students")
+}
+
+/// 8. Bảng EnrollmentRequest: Đăng ký & Xét duyệt ghi danh lớp học
+model EnrollmentRequest {
+  studentId       Int       @map("student_id")
+  classId         Int       @map("class_id")
+  requestDate     DateTime? @map("request_date") @db.Timestamp(6)
+  status          String?   @db.VarChar(50)
+  note            String?
+  rejectionReason String?   @map("rejection_reason")
+  reviewedBy      Int?      @map("reviewed_by")
+  reviewedAt      DateTime? @map("reviewed_at") @db.Timestamp(6)
+  id              Int       @id @default(autoincrement())
+  createdAt       DateTime? @map("created_at") @db.Timestamp(6)
+  updatedAt       DateTime? @updatedAt @map("updated_at") @db.Timestamp(6)
+  isDeleted       Boolean?  @map("is_deleted")
+  enrolledClass   Class     @relation(fields: [classId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  reviewer        User?     @relation("ReviewedByUser", fields: [reviewedBy], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  student         Student   @relation(fields: [studentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([id], map: "ix_enrollment_requests_id")
+  @@map("enrollment_requests")
+}
+
+/// 9. Bảng ScheduleSession: Lịch học từng buổi, xếp phòng & giáo viên
+model ScheduleSession {
+  classId      Int       @map("class_id")
+  classroomId  Int       @map("classroom_id")
+  teacherId    Int       @map("teacher_id")
+  sessionDate  DateTime  @map("session_date") @db.Date
+  startTime    String    @map("start_time") @db.VarChar(10)
+  endTime      String    @map("end_time") @db.VarChar(10)
+  slotName     String?   @map("slot_name") @db.VarChar(50)
+  isConfirmed  Boolean?  @map("is_confirmed")
+  status       String?   @db.VarChar(50)
+  id           Int       @id @default(autoincrement())
+  createdAt    DateTime? @map("created_at") @db.Timestamp(6)
+  updatedAt    DateTime? @updatedAt @map("updated_at") @db.Timestamp(6)
+  isDeleted    Boolean?  @map("is_deleted")
+  sessionClass Class     @relation(fields: [classId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  classroom    Classroom @relation(fields: [classroomId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  teacher      Teacher   @relation(fields: [teacherId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([id], map: "ix_schedule_sessions_id")
+  @@map("schedule_sessions")
+}
+
+/// 10. Bảng GradeRecord: Quản lý điểm số, đánh giá & khóa sổ điểm
+model GradeRecord {
+  classId         Int       @map("class_id")
+  studentId       Int       @map("student_id")
+  attendanceScore Float?    @map("attendance_score")
+  midtermScore    Float?    @map("midterm_score")
+  finalScore      Float?    @map("final_score")
+  totalScore      Float?    @map("total_score")
+  resultStatus    String?   @map("result_status") @db.VarChar(50)
+  isConfirmed     Boolean?  @map("is_confirmed")
+  note            String?
+  id              Int       @id @default(autoincrement())
+  createdAt       DateTime? @map("created_at") @db.Timestamp(6)
+  updatedAt       DateTime? @updatedAt @map("updated_at") @db.Timestamp(6)
+  isDeleted       Boolean?  @map("is_deleted")
+  enrolledClass   Class     @relation(fields: [classId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  student         Student   @relation(fields: [studentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([id], map: "ix_grade_records_id")
+  @@map("grade_records")
+}
+
+/// 11. Bảng CourseProgression: Lộ trình và thẩm định chuyển khóa học
+model CourseProgression {
+  studentId       Int       @map("student_id")
+  currentCourseId Int       @map("current_course_id")
+  nextCourseId    Int       @map("next_course_id")
+  isEligible      Boolean?  @map("is_eligible")
+  isConfirmed     Boolean?  @map("is_confirmed")
+  confirmedBy     Int?      @map("confirmed_by")
+  confirmedAt     DateTime? @map("confirmed_at") @db.Timestamp(6)
+  note            String?
+  id              Int       @id @default(autoincrement())
+  createdAt       DateTime? @map("created_at") @db.Timestamp(6)
+  updatedAt       DateTime? @updatedAt @map("updated_at") @db.Timestamp(6)
+  isDeleted       Boolean?  @map("is_deleted")
+  confirmer       User?     @relation("ConfirmedByUser", fields: [confirmedBy], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  currentCourse   Course    @relation("CurrentCourse", fields: [currentCourseId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  nextCourse      Course    @relation("NextCourse", fields: [nextCourseId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  student         Student   @relation(fields: [studentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([id], map: "ix_course_progressions_id")
+  @@map("course_progressions")
+}
+
+/// 12. Bảng ParentStudent: Liên kết phụ huynh giám hộ học viên
+model ParentStudent {
+  parentUserId     Int       @map("parent_user_id")
+  studentId        Int       @map("student_id")
+  relationshipType String?   @map("relationship_type") @db.VarChar(50)
+  id               Int       @id @default(autoincrement())
+  createdAt        DateTime? @map("created_at") @db.Timestamp(6)
+  updatedAt        DateTime? @updatedAt @map("updated_at") @db.Timestamp(6)
+  isDeleted        Boolean?  @map("is_deleted")
+  parentUser       User      @relation("ParentUser", fields: [parentUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  student          Student   @relation(fields: [studentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([id], map: "ix_parent_students_id")
+  @@map("parent_students")
+}
+
+enum roleenum {
   ADMIN
   ACADEMIC_STAFF
   TEACHER
   STUDENT
   PARENT
 }
-
-enum StudentStatus {
-  ACTIVE
-  INACTIVE
-  SUSPENDED
-  COMPLETED
-}
-
-enum TeacherStatus {
-  ACTIVE
-  ON_LEAVE
-  INACTIVE
-}
-
-enum ClassroomStatus {
-  AVAILABLE
-  MAINTENANCE
-  OCCUPIED
-}
-
-enum ClassStatus {
-  OPEN_FOR_ENROLLMENT
-  IN_PROGRESS
-  COMPLETED
-  CANCELLED
-}
-
-enum ClassStudentStatus {
-  ENROLLED
-  DROPPED
-  COMPLETED
-}
-
-enum EnrollmentStatus {
-  PENDING
-  APPROVED
-  REJECTED
-  CANCELLED
-}
-
-enum ScheduleStatus {
-  SCHEDULED
-  COMPLETED
-  CANCELLED
-}
-
-enum ResultStatus {
-  PENDING
-  PASSED
-  FAILED
-}
-
-// =============================================================================
-// MODELS
-// =============================================================================
-
-/// 1. Bảng User: Tài khoản người dùng & bảo mật đăng nhập
-model User {
-  id                    Int       @id @default(autoincrement())
-  username              String    @unique @db.VarChar(50)
-  email                 String    @unique @db.VarChar(100)
-  fullName              String    @map("full_name") @db.VarChar(100)
-  hashedPassword        String    @map("hashed_password") @db.VarChar(255)
-  role                  Role      @default(STUDENT)
-  phone                 String?   @db.VarChar(20)
-  avatarUrl             String?   @map("avatar_url") @db.VarChar(500)
-  isActive              Boolean   @default(true) @map("is_active")
-
-  // Bảo mật: Giới hạn đăng nhập sai & Đặt lại mật khẩu OTP
-  failedLoginAttempts   Int       @default(0) @map("failed_login_attempts")
-  lockedUntil           DateTime? @map("locked_until")
-  resetToken            String?   @map("reset_token") @db.VarChar(100)
-  resetTokenExpiresAt   DateTime? @map("reset_token_expires_at")
-
-  isDeleted             Boolean   @default(false) @map("is_deleted")
-  createdAt             DateTime  @default(now()) @map("created_at")
-  updatedAt             DateTime  @updatedAt @map("updated_at")
-
-  // Quan hệ 1-1 với hồ sơ chuyên biệt
-  studentProfile        Student?
-  teacherProfile        Teacher?
-
-  // Quan hệ 1-N
-  parentLinks           ParentStudent[]     @relation("ParentUser")
-  reviewedEnrollments   EnrollmentRequest[] @relation("ReviewedByUser")
-  confirmedProgressions CourseProgression[] @relation("ConfirmedByUser")
-
-  @@map("users")
-}
-
-/// 2. Bảng Course: Chương trình đào tạo & Chuẩn đầu ra
-model Course {
-  id                  Int       @id @default(autoincrement())
-  code                String    @unique @db.VarChar(50) // VD: IELTS-65, TOEIC-750
-  title               String    @db.VarChar(150)
-  description         String?   @db.Text
-  targetLevel         String    @map("target_level") @db.VarChar(100) // VD: IELTS 6.5
-  durationWeeks       Int       @default(12) @map("duration_weeks")
-  fee                 Float     @default(0.0)
-  isActive            Boolean   @default(true) @map("is_active")
-
-  isDeleted           Boolean   @default(false) @map("is_deleted")
-  createdAt           DateTime  @default(now()) @map("created_at")
-  updatedAt           DateTime  @updatedAt @map("updated_at")
-
-  // Quan hệ
-  classes             Class[]
-  currentProgressions CourseProgression[] @relation("CurrentCourse")
-  nextProgressions    CourseProgression[] @relation("NextCourse")
-
-  @@map("courses")
-}
-
-/// 3. Bảng Student: Hồ sơ cá nhân của học viên (1-1 với User)
-model Student {
-  id                 Int       @id @default(autoincrement())
-  userId             Int       @unique @map("user_id")
-  studentCode        String    @unique @map("student_code") @db.VarChar(50) // VD: HV2026-0001
-  dateOfBirth        DateTime? @map("date_of_birth") @db.Date
-  address            String?   @db.VarChar(255)
-  status             StudentStatus @default(ACTIVE)
-
-  isDeleted          Boolean   @default(false) @map("is_deleted")
-  createdAt          DateTime  @default(now()) @map("created_at")
-  updatedAt          DateTime  @updatedAt @map("updated_at")
-
-  // Quan hệ
-  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  classEnrollments   ClassStudent[]
-  enrollmentRequests EnrollmentRequest[]
-  grades             GradeRecord[]
-  progressions       CourseProgression[]
-  parents            ParentStudent[]
-
-  @@map("students")
-}
-
-/// 4. Bảng Teacher: Hồ sơ chuyên môn của giáo viên (1-1 với User)
-model Teacher {
-  id          Int           @id @default(autoincrement())
-  userId      Int           @unique @map("user_id")
-  teacherCode String        @unique @map("teacher_code") @db.VarChar(50) // VD: GV2026-0001
-  specialty   String        @default("IELTS/TOEIC") @db.VarChar(100)
-  degree      String        @default("Bachelor of English Linguistics") @db.VarChar(100)
-  status      TeacherStatus @default(ACTIVE)
-
-  isDeleted   Boolean       @default(false) @map("is_deleted")
-  createdAt   DateTime      @default(now()) @map("created_at")
-  updatedAt   DateTime      @updatedAt @map("updated_at")
-
-  // Quan hệ
-  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  classes     Class[]
-  schedules   ScheduleSession[]
-
-  @@map("teachers")
-}
-
-/// 5. Bảng Classroom: Cơ sở vật chất & Sức chứa phòng học
-model Classroom {
-  id        Int             @id @default(autoincrement())
-  roomCode  String          @unique @map("room_code") @db.VarChar(50) // VD: P.101, LAB.201
-  building  String          @default("Tòa nhà A") @db.VarChar(50)
-  capacity  Int             @default(30)
-  status    ClassroomStatus @default(AVAILABLE)
-
-  isDeleted Boolean         @default(false) @map("is_deleted")
-  createdAt DateTime        @default(now()) @map("created_at")
-  updatedAt DateTime        @updatedAt @map("updated_at")
-
-  // Quan hệ
-  schedules ScheduleSession[]
-
-  @@map("classrooms")
-}
-
-/// 6. Bảng Class: Quản lý lớp học, sĩ số & giáo viên phụ trách
-model Class {
-  id              Int         @id @default(autoincrement())
-  classCode       String      @unique @map("class_code") @db.VarChar(50) // VD: IELTS-65-K26A
-  courseId        Int         @map("course_id")
-  teacherId       Int?        @map("teacher_id")
-  maxCapacity     Int         @default(25) @map("max_capacity") // Sĩ số tối đa
-  currentEnrolled Int         @default(0) @map("current_enrolled") // Sĩ số thực tế
-  startDate       DateTime?   @map("start_date") @db.Date
-  endDate         DateTime?   @map("end_date") @db.Date
-  status          ClassStatus @default(OPEN_FOR_ENROLLMENT)
-
-  isDeleted       Boolean     @default(false) @map("is_deleted")
-  createdAt       DateTime    @default(now()) @map("created_at")
-  updatedAt       DateTime    @updatedAt @map("updated_at")
-
-  // Quan hệ
-  course          Course      @relation(fields: [courseId], references: [id], onDelete: Restrict)
-  teacher         Teacher?    @relation(fields: [teacherId], references: [id], onDelete: SetNull)
-
-  students        ClassStudent[]
-  schedules       ScheduleSession[]
-  enrollments     EnrollmentRequest[]
-  grades          GradeRecord[]
-
-  @@index([courseId])
-  @@index([teacherId])
-  @@map("classes")
-}
-
-/// 7. Bảng ClassStudent: Danh sách thành viên lớp học (Many-to-Many Class & Student)
-model ClassStudent {
-  id         Int                @id @default(autoincrement())
-  classId    Int                @map("class_id")
-  studentId  Int                @map("student_id")
-  enrolledAt DateTime           @default(now()) @map("enrolled_at")
-  status     ClassStudentStatus @default(ENROLLED)
-
-  isDeleted  Boolean            @default(false) @map("is_deleted")
-  createdAt  DateTime           @default(now()) @map("created_at")
-  updatedAt  DateTime           @updatedAt @map("updated_at")
-
-  // Quan hệ
-  enrolledClass Class           @relation(fields: [classId], references: [id], onDelete: Cascade)
-  student       Student         @relation(fields: [studentId], references: [id], onDelete: Cascade)
-
-  @@unique([classId, studentId])
-  @@index([classId])
-  @@index([studentId])
-  @@map("class_students")
-}
-
-/// 8. Bảng EnrollmentRequest: Đăng ký & Xét duyệt ghi danh lớp học
-model EnrollmentRequest {
-  id              Int              @id @default(autoincrement())
-  studentId       Int              @map("student_id")
-  classId         Int              @map("class_id")
-  requestDate     DateTime         @default(now()) @map("request_date")
-  status          EnrollmentStatus @default(PENDING)
-  note            String?          @db.Text
-  rejectionReason String?          @map("rejection_reason") @db.Text
-  reviewedBy      Int?             @map("reviewed_by")
-  reviewedAt      DateTime?        @map("reviewed_at")
-
-  isDeleted       Boolean          @default(false) @map("is_deleted")
-  createdAt       DateTime         @default(now()) @map("created_at")
-  updatedAt       DateTime         @updatedAt @map("updated_at")
-
-  // Quan hệ
-  student         Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  enrolledClass   Class            @relation(fields: [classId], references: [id], onDelete: Cascade)
-  reviewer        User?            @relation("ReviewedByUser", fields: [reviewedBy], references: [id], onDelete: SetNull)
-
-  @@index([studentId])
-  @@index([classId])
-  @@index([reviewedBy])
-  @@map("enrollment_requests")
-}
-
-/// 9. Bảng ScheduleSession: Lịch học từng buổi, xếp phòng & giáo viên
-model ScheduleSession {
-  id          Int            @id @default(autoincrement())
-  classId     Int            @map("class_id")
-  classroomId Int            @map("classroom_id")
-  teacherId   Int            @map("teacher_id")
-  sessionDate DateTime       @map("session_date") @db.Date
-  startTime   String         @map("start_time") @db.VarChar(10) // "18:00"
-  endTime     String         @map("end_time") @db.VarChar(10)   // "20:00"
-  slotName    String         @default("Ca tối (18:00 - 20:00)") @map("slot_name") @db.VarChar(50)
-  isConfirmed Boolean        @default(false) @map("is_confirmed")
-  status      ScheduleStatus @default(SCHEDULED)
-
-  isDeleted   Boolean        @default(false) @map("is_deleted")
-  createdAt   DateTime       @default(now()) @map("created_at")
-  updatedAt   DateTime       @updatedAt @map("updated_at")
-
-  // Quan hệ
-  sessionClass Class         @relation(fields: [classId], references: [id], onDelete: Cascade)
-  classroom    Classroom     @relation(fields: [classroomId], references: [id], onDelete: Restrict)
-  teacher      Teacher       @relation(fields: [teacherId], references: [id], onDelete: Restrict)
-
-  @@index([classId])
-  @@index([classroomId, sessionDate])
-  @@index([teacherId, sessionDate])
-  @@map("schedule_sessions")
-}
-
-/// 10. Bảng GradeRecord: Quản lý điểm số, đánh giá & khóa sổ điểm
-model GradeRecord {
-  id              Int          @id @default(autoincrement())
-  classId         Int          @map("class_id")
-  studentId       Int          @map("student_id")
-  attendanceScore Float        @default(0.0) @map("attendance_score") // 20%
-  midtermScore    Float        @default(0.0) @map("midterm_score")    // 30%
-  finalScore      Float        @default(0.0) @map("final_score")      // 50%
-  totalScore      Float        @default(0.0) @map("total_score")      // Điểm tổng kết
-  resultStatus    ResultStatus @default(PENDING) @map("result_status")
-  isConfirmed     Boolean      @default(false) @map("is_confirmed")   // Khóa sổ điểm
-  note            String?      @db.Text
-
-  isDeleted       Boolean      @default(false) @map("is_deleted")
-  createdAt       DateTime     @default(now()) @map("created_at")
-  updatedAt       DateTime     @updatedAt @map("updated_at")
-
-  // Quan hệ
-  enrolledClass   Class        @relation(fields: [classId], references: [id], onDelete: Cascade)
-  student         Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
-
-  @@unique([classId, studentId])
-  @@index([classId])
-  @@index([studentId])
-  @@map("grade_records")
-}
-
-/// 11. Bảng CourseProgression: Lộ trình và thẩm định chuyển khóa học
-model CourseProgression {
-  id              Int       @id @default(autoincrement())
-  studentId       Int       @map("student_id")
-  currentCourseId Int       @map("current_course_id")
-  nextCourseId    Int       @map("next_course_id")
-  isEligible      Boolean   @default(false) @map("is_eligible")
-  isConfirmed     Boolean   @default(false) @map("is_confirmed")
-  confirmedBy     Int?      @map("confirmed_by")
-  confirmedAt     DateTime? @map("confirmed_at")
-  note            String?   @db.Text
-
-  isDeleted       Boolean   @default(false) @map("is_deleted")
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
-
-  // Quan hệ
-  student         Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  currentCourse   Course    @relation("CurrentCourse", fields: [currentCourseId], references: [id], onDelete: Restrict)
-  nextCourse      Course    @relation("NextCourse", fields: [nextCourseId], references: [id], onDelete: Restrict)
-  confirmer       User?     @relation("ConfirmedByUser", fields: [confirmedBy], references: [id], onDelete: SetNull)
-
-  @@index([studentId])
-  @@index([currentCourseId])
-  @@index([nextCourseId])
-  @@index([confirmedBy])
-  @@map("course_progressions")
-}
-
-/// 12. Bảng ParentStudent: Liên kết phụ huynh giám hộ học viên
-model ParentStudent {
-  id               Int      @id @default(autoincrement())
-  parentUserId     Int      @map("parent_user_id")
-  studentId        Int      @map("student_id")
-  relationshipType String   @default("Phụ huynh / Người giám hộ") @map("relationship_type") @db.VarChar(50)
-
-  isDeleted        Boolean  @default(false) @map("is_deleted")
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
-
-  // Quan hệ
-  parentUser       User     @relation("ParentUser", fields: [parentUserId], references: [id], onDelete: Cascade)
-  student          Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
-
-  @@unique([parentUserId, studentId])
-  @@index([parentUserId])
-  @@index([studentId])
-  @@map("parent_students")
-}
-
