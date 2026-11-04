@@ -36,6 +36,8 @@ export const AuthProvider = ({ children }) => {
         if (res.success && res.data) {
             const { access_token, user_id, username: uName, full_name, role, avatar_url } = res.data;
             localStorage.setItem('token', access_token);
+            sessionStorage.setItem('just_logged_in', 'true');
+            sessionStorage.removeItem('just_logged_out');
             setToken(access_token);
             setUser({
                 id: user_id,
@@ -46,6 +48,13 @@ export const AuthProvider = ({ children }) => {
                 avatar_url: avatar_url || null,
                 is_active: true,
             });
+            try {
+                const url = new URL(window.location.href);
+                url.searchParams.set('tab', 'dashboard');
+                window.history.replaceState({ tab: 'dashboard' }, '', url.toString());
+            } catch (e) {
+                // ignore
+            }
         }
         return res;
     };
@@ -55,6 +64,8 @@ export const AuthProvider = ({ children }) => {
         if (res.success && res.data) {
             const { access_token, user_id, username: uName, full_name, role, avatar_url } = res.data;
             localStorage.setItem('token', access_token);
+            sessionStorage.setItem('just_logged_in', 'true');
+            sessionStorage.removeItem('just_logged_out');
             setToken(access_token);
             setUser({
                 id: user_id,
@@ -65,6 +76,13 @@ export const AuthProvider = ({ children }) => {
                 avatar_url: avatar_url || null,
                 is_active: true,
             });
+            try {
+                const url = new URL(window.location.href);
+                url.searchParams.set('tab', 'dashboard');
+                window.history.replaceState({ tab: 'dashboard' }, '', url.toString());
+            } catch (e) {
+                // ignore
+            }
         }
         return res;
     };
@@ -79,8 +97,17 @@ export const AuthProvider = ({ children }) => {
 
     const logout = () => {
         localStorage.removeItem('token');
+        sessionStorage.setItem('just_logged_out', 'true');
+        sessionStorage.removeItem('just_logged_in');
         setToken(null);
         setUser(null);
+        try {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('tab');
+            window.history.replaceState({}, '', url.pathname);
+        } catch (e) {
+            // ignore
+        }
     };
 
     const hasRole = (roles) => {

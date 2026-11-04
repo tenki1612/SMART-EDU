@@ -50,6 +50,26 @@ const tabMetadata = {
   accounts: { group: 'Quản trị & Nhân sự', label: 'Quản lý Tài khoản', icon: ShieldAlert },
 };
 
+const tabRolePermissions = {
+  dashboard: ['ADMIN', 'ACADEMIC_STAFF', 'TEACHER', 'STUDENT', 'PARENT'],
+  courses: ['ADMIN', 'ACADEMIC_STAFF'],
+  classes: ['ADMIN', 'ACADEMIC_STAFF', 'TEACHER', 'STUDENT'],
+  classrooms: ['ADMIN', 'ACADEMIC_STAFF', 'TEACHER'],
+  schedules: ['ADMIN', 'ACADEMIC_STAFF', 'TEACHER', 'STUDENT', 'PARENT'],
+  enrollments: ['ADMIN', 'ACADEMIC_STAFF', 'STUDENT'],
+  grades: ['ADMIN', 'ACADEMIC_STAFF', 'TEACHER', 'STUDENT', 'PARENT'],
+  progression: ['ADMIN', 'ACADEMIC_STAFF', 'STUDENT', 'PARENT'],
+  students: ['ADMIN', 'ACADEMIC_STAFF'],
+  teachers: ['ADMIN', 'ACADEMIC_STAFF'],
+  accounts: ['ADMIN'],
+};
+
+const isTabAllowedForRole = (tab, role) => {
+  if (!tab || !tabRolePermissions[tab]) return false;
+  if (!role) return false;
+  return tabRolePermissions[tab].includes(role);
+};
+
 const MainApp = () => {
   const { user, token, isLoading } = useAuth();
   
@@ -72,10 +92,12 @@ const MainApp = () => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const setHeaderSlot = useSetHeaderSlot();
 
+  const prevUserIdRef = React.useRef(user?.id);
+
   // Đồng bộ tab sang thanh địa chỉ (Address bar query parameter: ?tab=...)
   const handleTabChange = useCallback((newTab) => {
     let targetTab = newTab;
-    if (['TEACHER', 'STUDENT'].includes(user?.role) && targetTab === 'courses') {
+    if (!isTabAllowedForRole(targetTab, user?.role)) {
       targetTab = 'dashboard';
     }
     setCurrentTab(targetTab);
@@ -94,12 +116,8 @@ const MainApp = () => {
       try {
         const params = new URLSearchParams(window.location.search);
         const tabParam = params.get('tab');
-        if (tabParam && tabMetadata[tabParam]) {
-          if (['TEACHER', 'STUDENT'].includes(user?.role) && tabParam === 'courses') {
-            setCurrentTab('dashboard');
-          } else {
-            setCurrentTab(tabParam);
-          }
+        if (tabParam && tabMetadata[tabParam] && isTabAllowedForRole(tabParam, user?.role)) {
+          setCurrentTab(tabParam);
         } else {
           setCurrentTab('dashboard');
         }
@@ -111,22 +129,37 @@ const MainApp = () => {
     return () => window.removeEventListener('popstate', handlePopState);
   }, [user?.role]);
 
-  // Cập nhật parameter trên thanh địa chỉ khi đăng nhập hoặc tải lại trang
+  // Điều hướng và chuyển về Bảng điều khiển khi đăng nhập hoặc chuyển tài khoản khác
   useEffect(() => {
-    if (user?.id) {
-      const params = new URLSearchParams(window.location.search);
-      const tabParam = params.get('tab');
-      if (tabParam && tabMetadata[tabParam]) {
-        if (['TEACHER', 'STUDENT'].includes(user?.role) && tabParam === 'courses') {
-          handleTabChange('dashboard');
-        } else {
-          setCurrentTab(tabParam);
-        }
-      } else {
-        handleTabChange(currentTab || 'dashboard');
-      }
+    if (!user?.id) {
+      prevUserIdRef.current = null;
+      setCurrentTab('dashboard');
+      return;
     }
-  }, [user?.id]);
+
+    const justLoggedIn = sessionStorage.getItem('just_logged_in') === 'true';
+    const isNewUser = prevUserIdRef.current !== user.id;
+
+    if (justLoggedIn || isNewUser) {
+      sessionStorage.removeItem('just_logged_in');
+      sessionStorage.removeItem('just_logged_out');
+      prevUserIdRef.current = user.id;
+      handleTabChange('dashboard');
+      return;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const tabParam = params.get('tab');
+    if (tabParam && tabMetadata[tabParam]) {
+      if (!isTabAllowedForRole(tabParam, user.role)) {
+        handleTabChange('dashboard');
+      } else {
+        setCurrentTab(tabParam);
+      }
+    } else {
+      handleTabChange('dashboard');
+    }
+  }, [user?.id, user?.role, handleTabChange]);
 
   if (isLoading) {
     return (

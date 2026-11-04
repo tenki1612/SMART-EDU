@@ -345,9 +345,7 @@ export const EnrollmentsView = () => {
                   );
                 })}
 
-                <span className="text-[11px] font-bold text-slate-500 bg-slate-100 border border-slate-200/60 px-3 py-1.5 rounded-xl ml-1">
-                  {filteredRequests.length} đơn
-                </span>
+
               </div>
             </div>
           )}

@@ -264,6 +264,24 @@ export const ClassesView = () => {
         headerSlot
       )}
 
+      {/* Top Header Action Button for Student: Đăng ký lớp học */}
+      {headerSlot && user?.role === 'STUDENT' && createPortal(
+        <button
+          type="button"
+          onClick={() => {
+            const url = new URL(window.location.href);
+            url.searchParams.set('tab', 'enrollments');
+            window.history.pushState({ tab: 'enrollments' }, '', url.toString());
+            window.dispatchEvent(new PopStateEvent('popstate'));
+          }}
+          className="flex items-center gap-1.5 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-700 hover:to-indigo-600 active:scale-95 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold shadow-xs shadow-indigo-200 transition cursor-pointer shrink-0"
+        >
+          <UserCheck className="w-4 h-4" />
+          <span>Đăng ký lớp học</span>
+        </button>,
+        headerSlot
+      )}
+
       {/* KPI Metric Overview */}
       {user?.role !== 'STUDENT' && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
@@ -369,9 +387,7 @@ export const ClassesView = () => {
             );
           })}
 
-          <span className="text-[11px] font-bold text-slate-500 bg-slate-100 border border-slate-200/60 px-3 py-1.5 rounded-xl ml-1">
-            {classes.length} lớp
-          </span>
+
         </div>
 
       </div>

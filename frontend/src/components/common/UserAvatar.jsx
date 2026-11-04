@@ -18,15 +18,39 @@ const sizeClasses = {
   '2xl': 'w-24 h-24 text-2xl',
 };
 
+export const normalizeImageUrl = (url) => {
+  if (!url) return '';
+  let trimmed = url.trim();
+  if (!trimmed) return '';
+
+  // Google Drive sharing link parser
+  const gdriveMatch = trimmed.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if (gdriveMatch && gdriveMatch[1]) {
+    return `https://lh3.googleusercontent.com/d/${gdriveMatch[1]}`;
+  }
+
+  // Dropbox sharing link parser
+  if (trimmed.includes('dropbox.com') && trimmed.includes('dl=0')) {
+    return trimmed.replace('dl=0', 'raw=1');
+  }
+
+  // Prepend https:// if protocol is missing and not relative
+  if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://') && !trimmed.startsWith('/')) {
+    trimmed = `https://${trimmed}`;
+  }
+
+  return trimmed;
+};
+
 export const getResolvedAvatarUrl = (url) => {
   if (!url) return null;
-  const trimmed = url.trim();
-  if (!trimmed) return null;
-  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-    return trimmed;
+  const normalized = normalizeImageUrl(url);
+  if (!normalized) return null;
+  if (normalized.startsWith('http://') || normalized.startsWith('https://')) {
+    return normalized;
   }
   // If relative path like /uploads/avatars/...
-  return trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+  return normalized.startsWith('/') ? normalized : `/${normalized}`;
 };
 
 export const UserAvatar = ({
@@ -63,6 +87,7 @@ export const UserAvatar = ({
           src={resolvedUrl}
           alt={alt || name || 'Ảnh đại diện'}
           className="w-full h-full object-cover"
+          referrerPolicy="no-referrer"
           onError={() => setImgError(true)}
           loading="lazy"
         />

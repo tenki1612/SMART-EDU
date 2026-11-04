@@ -37,7 +37,7 @@ def seed_database():
             role=RoleEnum.ACADEMIC_STAFF,
             phone="0912345678"
         )
-        # 3. Teacher
+        # 3. Teacher 1 & 2
         user_teacher = User(
             username="teacher",
             email="teacher@center.edu.vn",
@@ -45,6 +45,14 @@ def seed_database():
             hashed_password=get_password_hash("teacher123"),
             role=RoleEnum.TEACHER,
             phone="0923456789"
+        )
+        user_teacher2 = User(
+            username="teacher2",
+            email="teacher2@center.edu.vn",
+            full_name="Cô Trần Thị Mai (Teacher)",
+            hashed_password=get_password_hash("teacher123"),
+            role=RoleEnum.TEACHER,
+            phone="0923456788"
         )
         # 4. Student
         user_student = User(
@@ -64,7 +72,7 @@ def seed_database():
             role=RoleEnum.PARENT,
             phone="0945678901"
         )
-        db.add_all([admin, staff, user_teacher, user_student, user_parent])
+        db.add_all([admin, staff, user_teacher, user_teacher2, user_student, user_parent])
         db.commit()
 
         # Profiles
@@ -75,6 +83,13 @@ def seed_database():
             degree="Master of Applied Linguistics",
             status="ACTIVE"
         )
+        teacher_profile2 = Teacher(
+            user_id=user_teacher2.id,
+            teacher_code="GV2026-002",
+            specialty="TOEIC 900 & Giao tiếp phản xạ",
+            degree="Bachelor of English Pedagogy",
+            status="ACTIVE"
+        )
         student_profile = Student(
             user_id=user_student.id,
             student_code="26-04001",
@@ -82,7 +97,7 @@ def seed_database():
             address="123 Nguyễn Văn Cừ, Quận 5, TP.HCM",
             status="ACTIVE"
         )
-        db.add_all([teacher_profile, student_profile])
+        db.add_all([teacher_profile, teacher_profile2, student_profile])
         db.commit()
 
         # Parent-Student Link (FR-81)
@@ -156,7 +171,7 @@ def seed_database():
         cls3 = Class(
             class_code="TOEIC-750-K12",
             course_id=c3.id,
-            teacher_id=teacher_profile.id,
+            teacher_id=teacher_profile2.id,
             max_capacity=25,
             current_enrolled=0,
             start_date=date(2026, 11, 15),

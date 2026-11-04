@@ -675,21 +675,7 @@ export const GradesView = () => {
           </select>
         </div>
 
-        <div className="flex items-center gap-2">
-          {isSheetLocked ? (
-            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-800 bg-amber-50 border border-amber-200 px-3 py-1 rounded-full">
-              <Lock className="w-3.5 h-3.5 text-amber-600" /> Bảng điểm đã khóa chính thức
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full">
-              <Unlock className="w-3.5 h-3.5 text-emerald-600" /> 
-              {isTeacher ? 'Đang mở nhập điểm (Giảng viên)' : 'Đang mở (Chờ học vụ lưu/khóa điểm)'}
-            </span>
-          )}
-          <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-lg">
-            {gradingSheet.length} học viên
-          </span>
-        </div>
+
       </div>
 
       {/* Grading Sheet Table */}

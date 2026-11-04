@@ -4,11 +4,12 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { useConfirm } from '../context/ConfirmDialogContext';
 import { useHeaderSlot } from '../context/HeaderSlotContext';
-import { schedulesApi, classroomsApi, teachersApi, classesApi } from '../services/api';
+import { schedulesApi, classroomsApi, teachersApi, classesApi, coursesApi } from '../services/api';
 import {
   CalendarDays, AlertTriangle, CheckCircle, CheckCircle2, Clock, MapPin, UserCheck, Calendar,
   ShieldCheck, Plus, Edit2, Trash2, ChevronLeft, ChevronRight,
-  LayoutGrid, List, Ban, X, Filter, Sparkles
+  LayoutGrid, List, Ban, X, Filter, Sparkles, Search, BookOpen, GraduationCap,
+  ChevronDown, Check, RotateCcw
 } from 'lucide-react';
 
 // Helper to safely format Date to YYYY-MM-DD in local timezone (avoids UTC toISOString shift)
@@ -34,6 +35,7 @@ export const SchedulesView = () => {
   const [classrooms, setClassrooms] = useState([]);
   const [teachers, setTeachers] = useState([]);
   const [classesList, setClassesList] = useState([]);
+  const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(false);
 
   // View & Filter states
@@ -43,6 +45,10 @@ export const SchedulesView = () => {
   const [historyFilter, setHistoryFilter] = useState('all'); // 'all' | 'upcoming' | 'past'
   const [selectedClassId, setSelectedClassId] = useState('');
   const [selectedTeacherId, setSelectedTeacherId] = useState('');
+  const [selectedCourseTitle, setSelectedCourseTitle] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showTeacherDropdown, setShowTeacherDropdown] = useState(false);
+  const [showCourseDropdown, setShowCourseDropdown] = useState(false);
 
   // Weekly Timetable Navigation (starts from current week's Monday)
   const [currentWeekStart, setCurrentWeekStart] = useState(() => {
@@ -105,16 +111,18 @@ export const SchedulesView = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [resSchedules, resRooms, resTeachers, resClasses] = await Promise.all([
+      const [resSchedules, resRooms, resTeachers, resClasses, resCourses] = await Promise.all([
         showPersonalOnly ? schedulesApi.getPersonal() : schedulesApi.list(),
         classroomsApi.list().catch(() => ({ data: [] })),
         teachersApi.list().catch(() => ({ data: [] })),
         classesApi.list().catch(() => ({ data: [] })),
+        coursesApi.list().catch(() => ({ data: [] })),
       ]);
       setSchedules(resSchedules.data || []);
       setClassrooms(resRooms.data || []);
       setTeachers(resTeachers.data || []);
       setClassesList(resClasses.data || []);
+      setCourses(resCourses.data || []);
 
       if (resRooms.data?.length > 0 && !addForm.classroom_id) {
         setAddForm(prev => ({
@@ -154,8 +162,77 @@ export const SchedulesView = () => {
 
   const todayStr = useMemo(() => toLocalDateStr(new Date()), []);
 
-  // Filtered schedules (all active schedules)
-  const filteredSchedules = schedules;
+  // Close filter dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (!e.target.closest('.schedule-filter-dropdown')) {
+        setShowTeacherDropdown(false);
+        setShowCourseDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Distinct lists for Teacher & Course filter buttons
+  const availableTeachers = useMemo(() => {
+    const map = new Map();
+    teachers.forEach(t => {
+      map.set(String(t.id), { id: t.id, name: t.full_name, code: t.teacher_code });
+    });
+    schedules.forEach(s => {
+      if (s.teacher_id && !map.has(String(s.teacher_id))) {
+        map.set(String(s.teacher_id), { id: s.teacher_id, name: s.teacher_name, code: '' });
+      }
+    });
+    return Array.from(map.values());
+  }, [teachers, schedules]);
+
+  const availableCourses = useMemo(() => {
+    const map = new Map();
+    courses.forEach(c => {
+      map.set(c.title, { id: c.id, title: c.title, code: c.code });
+    });
+    schedules.forEach(s => {
+      if (s.course_title && !map.has(s.course_title)) {
+        map.set(s.course_title, { id: s.course_title, title: s.course_title, code: '' });
+      }
+    });
+    return Array.from(map.values());
+  }, [courses, schedules]);
+
+  // Filtered schedules by Search text, Teacher, and Course
+  const filteredSchedules = useMemo(() => {
+    return schedules.filter(s => {
+      // 1. Text search
+      if (searchTerm.trim()) {
+        const term = searchTerm.trim().toLowerCase();
+        const matchClass = s.class_code?.toLowerCase().includes(term);
+        const matchCourse = s.course_title?.toLowerCase().includes(term);
+        const matchTeacher = s.teacher_name?.toLowerCase().includes(term);
+        const matchRoom = s.room_code?.toLowerCase().includes(term);
+        if (!matchClass && !matchCourse && !matchTeacher && !matchRoom) {
+          return false;
+        }
+      }
+
+      // 2. Filter by Teacher
+      if (selectedTeacherId) {
+        if (String(s.teacher_id) !== String(selectedTeacherId)) {
+          return false;
+        }
+      }
+
+      // 3. Filter by Course
+      if (selectedCourseTitle) {
+        if (s.course_title !== selectedCourseTitle) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [schedules, searchTerm, selectedTeacherId, selectedCourseTitle]);
 
   // Counts for tabs
   const upcomingCount = useMemo(() => {
@@ -396,36 +473,30 @@ export const SchedulesView = () => {
       {/* Top Header Action Buttons & View Mode Toggle */}
       {headerSlot && createPortal(
         <div className="flex items-center gap-2">
-          {!isAdmin ? (
-            <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/80">
-              <button
-                type="button"
-                onClick={() => setViewMode('grid')}
-                className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
-                  viewMode === 'grid'
-                    ? 'bg-white text-indigo-700 shadow-2xs font-extrabold'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <LayoutGrid className="w-3.5 h-3.5" /> Bảng tuần
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('list')}
-                className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
-                  viewMode === 'list'
-                    ? 'bg-white text-indigo-700 shadow-2xs font-extrabold'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <List className="w-3.5 h-3.5" /> Danh sách
-              </button>
-            </div>
-          ) : (
-            <span className="text-xs font-bold text-slate-500 bg-white px-2.5 py-1 rounded-lg border border-slate-200/80 shadow-2xs flex items-center gap-1.5">
-              <List className="w-3.5 h-3.5 text-indigo-600" /> Danh sách tổng hợp
-            </span>
-          )}
+          <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/80">
+            <button
+              type="button"
+              onClick={() => setViewMode('grid')}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                viewMode === 'grid'
+                  ? 'bg-white text-indigo-700 shadow-2xs font-extrabold'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <LayoutGrid className="w-3.5 h-3.5" /> Bảng tuần
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('list')}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                viewMode === 'list'
+                  ? 'bg-white text-indigo-700 shadow-2xs font-extrabold'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <List className="w-3.5 h-3.5" /> Danh sách
+            </button>
+          </div>
 
           {canManage && (
             <button
@@ -442,6 +513,198 @@ export const SchedulesView = () => {
           )}
         </div>,
         headerSlot
+      )}
+
+            {/* Search and Interactive Filters for Admin & Academic Staff */}
+      {canManage && (
+        <div className="bg-white p-3.5 sm:p-4 rounded-3xl border border-slate-200/90 shadow-2xs space-y-3">
+          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+            
+            {/* Search Input */}
+            <div className="flex items-center gap-2.5 flex-1 bg-slate-50/80 border border-slate-200/80 rounded-2xl px-3.5 py-2.5 focus-within:bg-white focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-100 transition">
+              <Search className="w-4 h-4 text-slate-400 shrink-0" />
+              <input
+                type="text"
+                placeholder="Tìm kiếm theo mã lớp, tên khóa học, giáo viên hoặc phòng học..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full text-xs outline-hidden text-slate-800 placeholder:text-slate-400 bg-transparent font-medium"
+              />
+              {searchTerm && (
+                <button
+                  type="button"
+                  onClick={() => setSearchTerm('')}
+                  className="text-slate-400 hover:text-slate-600 cursor-pointer p-0.5 rounded-full hover:bg-slate-200/50"
+                  title="Xóa tìm kiếm"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Hai nút tương tác: Giáo viên & Khóa học */}
+            <div className="flex items-center gap-2 flex-wrap shrink-0">
+              
+              {/* Nút tương tác 1: Giáo viên */}
+              <div className="relative schedule-filter-dropdown">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowTeacherDropdown(prev => !prev);
+                    setShowCourseDropdown(false);
+                  }}
+                  className={`px-3.5 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 border shadow-2xs ${
+                    selectedTeacherId
+                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-indigo-200'
+                      : 'bg-white hover:bg-slate-50 border-slate-200/90 text-slate-700'
+                  }`}
+                  title="Lọc thời khóa biểu theo Giáo viên"
+                >
+                  <GraduationCap className={`w-4 h-4 ${selectedTeacherId ? 'text-white' : 'text-indigo-600'}`} />
+                  <span className="max-w-[150px] truncate">
+                    {selectedTeacherId
+                      ? (availableTeachers.find(t => String(t.id) === String(selectedTeacherId))?.name || 'Giáo viên')
+                      : 'Giáo viên'}
+                  </span>
+                  <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showTeacherDropdown ? 'rotate-180' : ''} ${selectedTeacherId ? 'text-white/80' : 'text-slate-400'}`} />
+                </button>
+
+                {/* Dropdown Menu Giáo viên */}
+                {showTeacherDropdown && (
+                  <div className="absolute left-0 sm:right-0 sm:left-auto mt-2 w-64 bg-white rounded-2xl shadow-xl border border-slate-200/90 py-2 z-40 animate-in fade-in zoom-in-95 duration-150">
+                    <div className="px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-100 flex items-center justify-between">
+                      <span>Lọc theo Giáo viên</span>
+                      <span className="text-slate-400 font-mono">{availableTeachers.length} GV</span>
+                    </div>
+                    <div className="max-h-60 overflow-y-auto py-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedTeacherId('');
+                          setShowTeacherDropdown(false);
+                        }}
+                        className={`w-full px-3.5 py-2 text-left text-xs font-medium flex items-center justify-between hover:bg-slate-50 cursor-pointer ${
+                          !selectedTeacherId ? 'text-indigo-600 font-bold bg-indigo-50/50' : 'text-slate-700'
+                        }`}
+                      >
+                        <span>Tất cả giáo viên</span>
+                        {!selectedTeacherId && <Check className="w-3.5 h-3.5 text-indigo-600" />}
+                      </button>
+                      {availableTeachers.map((t) => {
+                        const isSelected = String(selectedTeacherId) === String(t.id);
+                        return (
+                          <button
+                            key={t.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedTeacherId(t.id);
+                              setShowTeacherDropdown(false);
+                            }}
+                            className={`w-full px-3.5 py-2 text-left text-xs font-medium flex items-center justify-between hover:bg-slate-50 cursor-pointer ${
+                              isSelected ? 'text-indigo-600 font-bold bg-indigo-50/50' : 'text-slate-700'
+                            }`}
+                          >
+                            <span className="truncate pr-2">{t.name}</span>
+                            {isSelected && <Check className="w-3.5 h-3.5 text-indigo-600 shrink-0" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Nút tương tác 2: Khóa học */}
+              <div className="relative schedule-filter-dropdown">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowCourseDropdown(prev => !prev);
+                    setShowTeacherDropdown(false);
+                  }}
+                  className={`px-3.5 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 border shadow-2xs ${
+                    selectedCourseTitle
+                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-indigo-200'
+                      : 'bg-white hover:bg-slate-50 border-slate-200/90 text-slate-700'
+                  }`}
+                  title="Lọc thời khóa biểu theo Khóa học"
+                >
+                  <BookOpen className={`w-4 h-4 ${selectedCourseTitle ? 'text-white' : 'text-indigo-600'}`} />
+                  <span className="max-w-[150px] truncate">
+                    {selectedCourseTitle
+                      ? (availableCourses.find(c => c.title === selectedCourseTitle)?.title || 'Khóa học')
+                      : 'Khóa học'}
+                  </span>
+                  <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showCourseDropdown ? 'rotate-180' : ''} ${selectedCourseTitle ? 'text-white/80' : 'text-slate-400'}`} />
+                </button>
+
+                {/* Dropdown Menu Khóa học */}
+                {showCourseDropdown && (
+                  <div className="absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-xl border border-slate-200/90 py-2 z-40 animate-in fade-in zoom-in-95 duration-150">
+                    <div className="px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-100 flex items-center justify-between">
+                      <span>Lọc theo Khóa học</span>
+                      <span className="text-slate-400 font-mono">{availableCourses.length} khóa</span>
+                    </div>
+                    <div className="max-h-60 overflow-y-auto py-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedCourseTitle('');
+                          setShowCourseDropdown(false);
+                        }}
+                        className={`w-full px-3.5 py-2 text-left text-xs font-medium flex items-center justify-between hover:bg-slate-50 cursor-pointer ${
+                          !selectedCourseTitle ? 'text-indigo-600 font-bold bg-indigo-50/50' : 'text-slate-700'
+                        }`}
+                      >
+                        <span>Tất cả khóa học</span>
+                        {!selectedCourseTitle && <Check className="w-3.5 h-3.5 text-indigo-600" />}
+                      </button>
+                      {availableCourses.map((c) => {
+                        const isSelected = selectedCourseTitle === c.title;
+                        return (
+                          <button
+                            key={c.id || c.title}
+                            type="button"
+                            onClick={() => {
+                              setSelectedCourseTitle(c.title);
+                              setShowCourseDropdown(false);
+                            }}
+                            className={`w-full px-3.5 py-2 text-left text-xs font-medium flex items-center justify-between hover:bg-slate-50 cursor-pointer ${
+                              isSelected ? 'text-indigo-600 font-bold bg-indigo-50/50' : 'text-slate-700'
+                            }`}
+                          >
+                            <span className="truncate pr-2">{c.title}</span>
+                            {isSelected && <Check className="w-3.5 h-3.5 text-indigo-600 shrink-0" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Nút Đặt lại bộ lọc (Reset) khi có điều kiện lọc đang kích hoạt */}
+              {(searchTerm || selectedTeacherId || selectedCourseTitle) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchTerm('');
+                    setSelectedTeacherId('');
+                    setSelectedCourseTitle('');
+                  }}
+                  className="px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-2xl border border-rose-200/80 transition cursor-pointer flex items-center gap-1 active:scale-95 shadow-2xs"
+                  title="Xóa toàn bộ bộ lọc"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Xóa lọc</span>
+                </button>
+              )}
+
+
+
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Timetable Weekly Matrix View (Requirement 2) */}

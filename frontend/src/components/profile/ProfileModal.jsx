@@ -1,16 +1,18 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { useConfirm } from '../../context/ConfirmDialogContext';
 import { accountsApi } from '../../services/api';
-import { UserAvatar } from '../common/UserAvatar';
+import { UserAvatar, normalizeImageUrl } from '../common/UserAvatar';
 import {
   X,
   Upload,
   Camera,
   Trash2,
   Check,
+  CheckCircle2,
+  AlertTriangle,
   Sparkles,
   Link as LinkIcon,
   User,
@@ -39,8 +41,47 @@ export const ProfileModal = ({ isOpen, onClose }) => {
 
   const [activeTab, setActiveTab] = useState('avatar'); // 'avatar' | 'info' | 'password'
   const [customUrl, setCustomUrl] = useState('');
+  const [urlPreviewStatus, setUrlPreviewStatus] = useState(null); // null | 'loading' | 'valid' | 'invalid'
+  const [urlPreviewImg, setUrlPreviewImg] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [isSavingInfo, setIsSavingInfo] = useState(false);
+
+  // Live preview & verification of custom image URL
+  useEffect(() => {
+    const raw = customUrl.trim();
+    if (!raw) {
+      setUrlPreviewStatus(null);
+      setUrlPreviewImg('');
+      return;
+    }
+
+    setUrlPreviewStatus('loading');
+    const normalized = normalizeImageUrl(raw);
+    let isCancelled = false;
+
+    const timer = setTimeout(() => {
+      const img = new Image();
+      img.referrerPolicy = 'no-referrer';
+      img.onload = () => {
+        if (!isCancelled) {
+          setUrlPreviewStatus('valid');
+          setUrlPreviewImg(normalized);
+        }
+      };
+      img.onerror = () => {
+        if (!isCancelled) {
+          setUrlPreviewStatus('invalid');
+          setUrlPreviewImg('');
+        }
+      };
+      img.src = normalized;
+    }, 350);
+
+    return () => {
+      isCancelled = true;
+      clearTimeout(timer);
+    };
+  }, [customUrl]);
 
   // Profile Form state
   const [infoForm, setInfoForm] = useState({
@@ -103,18 +144,22 @@ export const ProfileModal = ({ isOpen, onClose }) => {
 
   // 3. Apply custom URL
   const handleApplyCustomUrl = async (e) => {
-    e.preventDefault();
-    if (!customUrl.trim()) {
+    e?.preventDefault();
+    const raw = customUrl.trim();
+    if (!raw) {
       toast.warning('Vui lòng nhập đường dẫn hình ảnh hợp lệ!');
       return;
     }
 
+    const normalized = normalizeImageUrl(raw);
     setIsUploading(true);
     try {
-      const res = await accountsApi.updateMyAvatar(customUrl.trim());
+      const res = await accountsApi.updateMyAvatar(normalized);
       updateUserProfile({ avatar_url: res.data.avatar_url });
-      toast.success('Đã cập nhật ảnh đại diện từ URL thành công!');
+      toast.success('Đã cập nhật ảnh đại diện từ liên kết URL thành công!');
       setCustomUrl('');
+      setUrlPreviewStatus(null);
+      setUrlPreviewImg('');
     } catch (err) {
       toast.error(err.message || 'Không thể cập nhật ảnh đại diện.');
     } finally {
@@ -407,27 +452,106 @@ export const ProfileModal = ({ isOpen, onClose }) => {
                 </div>
               </div>
 
-              {/* Custom Image URL option */}
-              <div className="space-y-2 pt-2 border-t border-slate-100">
-                <span className="font-bold text-slate-700 text-xs flex items-center gap-1.5">
-                  <LinkIcon className="w-3.5 h-3.5 text-slate-400" />
-                  Hoặc nhập đường dẫn ảnh trực tuyến (Image URL):
-                </span>
-                <form onSubmit={handleApplyCustomUrl} className="flex gap-2">
-                  <input
-                    type="url"
-                    placeholder="https://example.com/avatar.png"
-                    value={customUrl}
-                    onChange={(e) => setCustomUrl(e.target.value)}
-                    className="flex-1 border border-slate-300 px-3 py-2 rounded-xl text-xs outline-hidden focus:border-indigo-600 font-mono"
-                  />
-                  <button
-                    type="submit"
-                    disabled={isUploading || !customUrl.trim()}
-                    className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-xl cursor-pointer disabled:opacity-40 transition"
-                  >
-                    Áp dụng
-                  </button>
+              {/* Custom Image URL option with Live Preview & Verification */}
+              <div className="space-y-3 pt-3 border-t border-slate-100">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-700 text-xs flex items-center gap-1.5">
+                    <LinkIcon className="w-3.5 h-3.5 text-indigo-600" />
+                    Hoặc nhập đường dẫn ảnh trực tuyến (Image URL):
+                  </span>
+                  <span className="text-[10px] text-slate-400">Hỗ trợ Unsplash, Google Drive, Imgur, CDN...</span>
+                </div>
+
+                <form onSubmit={handleApplyCustomUrl} className="space-y-2.5">
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="https://images.unsplash.com/... hoặc dán link ảnh bất kỳ"
+                      value={customUrl}
+                      onChange={(e) => setCustomUrl(e.target.value)}
+                      className="flex-1 border border-slate-300 px-3.5 py-2.5 rounded-xl text-xs outline-hidden focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 font-mono transition"
+                    />
+                    <button
+                      type="submit"
+                      disabled={isUploading || !customUrl.trim()}
+                      className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold text-xs rounded-xl cursor-pointer disabled:opacity-40 transition shadow-xs flex items-center gap-1.5 shrink-0"
+                    >
+                      {isUploading ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          <span>Đang lưu...</span>
+                        </>
+                      ) : (
+                        <span>Áp dụng ảnh</span>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* URL Live Preview Card */}
+                  {urlPreviewStatus === 'loading' && (
+                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-500 flex items-center gap-2 text-xs">
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-600" />
+                      <span>Đang kiểm tra liên kết hình ảnh...</span>
+                    </div>
+                  )}
+
+                  {urlPreviewStatus === 'valid' && (
+                    <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between gap-3 animate-in fade-in duration-150">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-xl overflow-hidden border border-emerald-300 bg-white shadow-2xs shrink-0">
+                          <img
+                            src={urlPreviewImg}
+                            alt="Xem trước ảnh"
+                            className="w-full h-full object-cover"
+                            referrerPolicy="no-referrer"
+                          />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-1.5 text-emerald-800 font-bold text-xs">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                            <span>Hình ảnh hợp lệ!</span>
+                          </div>
+                          <span className="text-[11px] text-emerald-700/80">
+                            Bấm nút <strong>"Áp dụng ảnh"</strong> để lưu làm ảnh đại diện.
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {urlPreviewStatus === 'invalid' && (
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-2.5 text-xs text-amber-800 animate-in fade-in duration-150">
+                      <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-bold block">Không thể tải ảnh từ liên kết này</span>
+                        <span className="text-[11px] text-amber-700 leading-relaxed block mt-0.5">
+                          Vui lòng kiểm tra lại: URL phải là đường dẫn ảnh trực tiếp (kết thúc bằng .jpg, .png, .webp) hoặc link ảnh công khai không yêu cầu đăng nhập.
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Quick sample URLs */}
+                  {!customUrl && (
+                    <div className="flex items-center gap-2 pt-1 text-[11px] text-slate-500 flex-wrap">
+                      <span className="text-slate-400 font-medium">Link mẫu thử nhanh:</span>
+                      <button
+                        type="button"
+                        onClick={() => setCustomUrl('https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300')}
+                        className="text-indigo-600 hover:underline hover:text-indigo-700 cursor-pointer font-medium"
+                      >
+                        Ảnh chân dung Unsplash
+                      </button>
+                      <span>&bull;</span>
+                      <button
+                        type="button"
+                        onClick={() => setCustomUrl('https://api.dicebear.com/7.x/bottts/svg?seed=SmartEdu')}
+                        className="text-indigo-600 hover:underline hover:text-indigo-700 cursor-pointer font-medium"
+                      >
+                        Avatar Robot
+                      </button>
+                    </div>
+                  )}
                 </form>
               </div>
 

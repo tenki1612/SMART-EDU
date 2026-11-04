@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { UserAvatar } from '../components/common/UserAvatar';
+import { ProfileModal } from '../components/profile/ProfileModal';
 import { useAuth } from '../context/AuthContext';
 import {
   coursesApi,
@@ -32,11 +33,13 @@ import {
   ShieldCheck,
   Plus,
   ArrowUpRight,
-  Activity
+  Activity,
+  Camera
 } from 'lucide-react';
 
 export const DashboardView = ({ onTabChange = () => {} }) => {
   const { user } = useAuth();
+  const [showProfileModal, setShowProfileModal] = useState(false);
   const role = user?.role || 'STUDENT';
 
   const isAdminOrStaff = ['ADMIN', 'ACADEMIC_STAFF'].includes(role);
@@ -542,11 +545,18 @@ export const DashboardView = ({ onTabChange = () => {} }) => {
 
           <div className="p-5 flex flex-col md:flex-row items-start gap-5 sm:gap-6">
             {/* Student Portrait Photo (Khung chân dung phông xanh chuẩn) */}
-            <div className="w-28 sm:w-32 h-36 sm:h-40 rounded-xl overflow-hidden bg-sky-500 border border-slate-200 shrink-0 shadow-xs flex items-center justify-center relative group">
+            <div
+              onClick={() => setShowProfileModal(true)}
+              role="button"
+              tabIndex={0}
+              title="Bấm để thay đổi ảnh đại diện / ảnh thẻ"
+              className="w-28 sm:w-32 h-36 sm:h-40 rounded-xl overflow-hidden bg-sky-500 border border-slate-200 shrink-0 shadow-xs flex items-center justify-center relative group cursor-pointer transition-transform hover:scale-[1.02]"
+            >
               {user?.avatar_url ? (
                 <img
                   src={user.avatar_url}
                   alt={user.full_name}
+                  referrerPolicy="no-referrer"
                   className="w-full h-full object-cover"
                 />
               ) : (
@@ -555,6 +565,12 @@ export const DashboardView = ({ onTabChange = () => {} }) => {
                   <span className="text-[10px] font-bold text-white/90 uppercase tracking-wider">Ảnh thẻ</span>
                 </div>
               )}
+
+              {/* Hover overlay hint */}
+              <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-2xs opacity-0 group-hover:opacity-100 transition flex flex-col items-center justify-center text-white text-[10px] font-bold gap-1 shadow-inner">
+                <Camera className="w-5 h-5 text-white" />
+                <span>Đổi ảnh thẻ</span>
+              </div>
             </div>
 
             {/* Structured Details Grid */}
@@ -634,22 +650,28 @@ export const DashboardView = ({ onTabChange = () => {} }) => {
           <span className="text-[11px] font-black uppercase tracking-wider text-slate-400 ml-2">Thao tác nhanh:</span>
           <div className="flex flex-wrap items-center gap-2">
             <button
+              onClick={() => onTabChange('enrollments')}
+              className="px-3.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-2xs border border-indigo-200/70 active:scale-95"
+            >
+              <UserCheck className="w-3.5 h-3.5 text-indigo-600" /> Đăng ký lớp học
+            </button>
+            <button
               onClick={() => onTabChange('schedules')}
-              className="px-3.5 py-1.5 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-700 text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-2xs border border-sky-200/70"
+              className="px-3.5 py-1.5 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-700 text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-2xs border border-sky-200/70 active:scale-95"
             >
               <CalendarDays className="w-3.5 h-3.5" /> Thời khóa biểu cá nhân
             </button>
             <button
               onClick={() => onTabChange('grades')}
-              className="px-3.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-2xs border border-emerald-200/70"
+              className="px-3.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-2xs border border-emerald-200/70 active:scale-95"
             >
               <Award className="w-3.5 h-3.5" /> Xem bảng điểm chi tiết
             </button>
             <button
               onClick={() => onTabChange('progression')}
-              className="px-3.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-2xs border border-amber-200/70"
+              className="px-3.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-2xs border border-amber-200/70 active:scale-95"
             >
-              <UserCheck className="w-3.5 h-3.5" /> Chuyển khóa học
+              <ArrowUpRight className="w-3.5 h-3.5 text-amber-700" /> Chuyển khóa học
             </button>
           </div>
         </div>
@@ -742,6 +764,7 @@ export const DashboardView = ({ onTabChange = () => {} }) => {
 
         </div>
 
+        <ProfileModal isOpen={showProfileModal} onClose={() => setShowProfileModal(false)} />
       </div>
     );
   }
