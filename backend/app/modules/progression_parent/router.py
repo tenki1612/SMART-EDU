@@ -102,6 +102,19 @@ def reject_progression(
     res = ProgressionParentService.reject_progression(db, progression_id, staff_id, data.reason)
     return ApiResponse(data=res, message="Đã từ chối yêu cầu chuyển khóa học.")
 
+@router.delete("/{progression_id}", response_model=ApiResponse[bool], summary="Xóa hồ sơ chuyển khóa (Admin/Học vụ)")
+def delete_progression(
+    progression_id: int,
+    db: Session = Depends(get_db),
+    _ = Depends(require_roles([RoleEnum.ADMIN, RoleEnum.ACADEMIC_STAFF]))
+):
+    from app.modules.progression_parent.models import CourseProgression
+    prog = db.query(CourseProgression).filter(CourseProgression.id == progression_id).first()
+    if prog:
+        db.delete(prog)
+        db.commit()
+    return ApiResponse(data=True, message="Đã xóa hồ sơ chuyển khóa.")
+
 @router.post("/check-eligibility", response_model=ApiResponse[ProgressionResponse], summary="FR-78: Kiểm tra điều kiện đăng ký khóa học tiếp theo")
 def check_progression(
     data: ProgressionCheckRequest,

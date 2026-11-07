@@ -603,7 +603,8 @@ def run_tests():
     # 19.7. Clean up test data
     client.patch(f"/api/v1/enrollments/{enroll_id}/cancel", headers=s_headers)
     client.delete(f"/api/v1/classes/{new_toeic_cls_id}", headers=staff_headers)
-    print("✓ 19.6. Clean up Progression Test Class & Enrollment: PASSED")
+    client.delete(f"/api/v1/progression/{prog_id}", headers=staff_headers)
+    print("✓ 19.6. Clean up Progression Test Class, Progression & Enrollment: PASSED")
 
     print("\n🎉 ALL BACKEND INTEGRATION TESTS PASSED (100% SUCCESS)!")
 
