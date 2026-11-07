@@ -171,8 +171,17 @@ export const teachersApi = {
 
 // 6. Classes API
 export const classesApi = {
-    list: async (q, status) => {
-        const res = await apiClient.get('/classes/', { params: { q, status } });
+    list: async (q, status, teacher_id, my_classes) => {
+        let params = {};
+        if (typeof q === 'object' && q !== null) {
+            params = q;
+        } else {
+            if (q) params.q = q;
+            if (status) params.status = status;
+            if (teacher_id) params.teacher_id = teacher_id;
+            if (my_classes) params.my_classes = my_classes;
+        }
+        const res = await apiClient.get('/classes/', { params });
         return res.data;
     },
     create: async (data) => {

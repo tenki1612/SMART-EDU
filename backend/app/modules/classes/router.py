@@ -35,20 +35,33 @@ def list_classes(
     q: Optional[str] = Query(None, description="Tìm theo mã lớp"),
     course_id: Optional[int] = Query(None, description="Lọc theo khóa học"),
     status: Optional[str] = Query(None, description="Lọc: OPEN_FOR_ENROLLMENT, IN_PROGRESS, COMPLETED..."),
+    teacher_id: Optional[int] = Query(None, description="Lọc theo giáo viên phụ trách"),
+    my_classes: Optional[bool] = Query(False, description="Chỉ lấy các lớp do giảng viên phụ trách"),
     db: Session = Depends(get_db),
     payload: Optional[dict] = Depends(get_optional_user_payload)
 ):
     student_id = None
-    if payload and payload.get("role") == RoleEnum.STUDENT.value:
-        from app.modules.students.models import Student
+    if payload:
+        user_role = payload.get("role")
         user_id = int(payload.get("sub", 0)) if "sub" in payload else payload.get("user_id")
-        student = db.query(Student).filter(Student.user_id == user_id, Student.is_deleted == False).first()
-        if student:
-            student_id = student.id
-        else:
-            return ApiResponse(data=[], message="Học viên chưa có hồ sơ học tập")
+        if user_role == RoleEnum.STUDENT.value:
+            from app.modules.students.models import Student
+            student = db.query(Student).filter(Student.user_id == user_id, Student.is_deleted == False).first()
+            if student:
+                student_id = student.id
+            else:
+                return ApiResponse(data=[], message="Học viên chưa có hồ sơ học tập")
+        elif user_role == RoleEnum.TEACHER.value and my_classes:
+            from app.modules.teachers.models import Teacher
+            teacher = db.query(Teacher).filter(Teacher.user_id == user_id, Teacher.is_deleted == False).first()
+            if teacher:
+                teacher_id = teacher.id
+            else:
+                return ApiResponse(data=[], message="Chưa tìm thấy hồ sơ giảng viên")
 
-    classes = ClassService.list_classes(db, q=q, course_id=course_id, status=status, student_id=student_id)
+    classes = ClassService.list_classes(
+        db, q=q, course_id=course_id, status=status, student_id=student_id, teacher_id=teacher_id
+    )
     return ApiResponse(data=classes, message="Danh sách lớp học")
 
 @router.get("/{class_id}", response_model=ApiResponse[ClassResponse], summary="FR-35: Xem chi tiết lớp học (gồm cấp độ mục tiêu)")

@@ -83,6 +83,15 @@ class GradeService:
         if not cls:
             raise NotFoundException("Lớp học", data.class_id)
 
+        # Kiểm tra nếu bảng điểm của lớp đã bị khóa sổ chính thức
+        is_locked = db.query(GradeRecord).filter(
+            GradeRecord.class_id == data.class_id,
+            GradeRecord.is_confirmed == True,
+            GradeRecord.is_deleted == False
+        ).first()
+        if is_locked:
+            raise BusinessException("Bảng điểm của lớp học đã được khóa chính thức. Giảng viên không có quyền chỉnh sửa hoặc lưu điểm.")
+
         for item in data.grades:
             # FR-73: Kiểm tra tính hợp lệ của điểm (0 - 10)
             if not (0.0 <= item.attendance_score <= 10.0 and 
@@ -153,6 +162,14 @@ class GradeService:
         cls = db.query(Class).filter(Class.id == class_id, Class.is_deleted == False).first()
         if not cls:
             raise NotFoundException("Lớp học", class_id)
+
+        is_locked = db.query(GradeRecord).filter(
+            GradeRecord.class_id == class_id,
+            GradeRecord.is_confirmed == True,
+            GradeRecord.is_deleted == False
+        ).first()
+        if is_locked:
+            raise BusinessException("Bảng điểm của lớp học đã được khóa chính thức, không thể thêm học viên.")
 
         student = db.query(Student).filter(Student.id == data.student_id, Student.is_deleted == False).first()
         if not student:

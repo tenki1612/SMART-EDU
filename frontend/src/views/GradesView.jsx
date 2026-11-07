@@ -65,11 +65,17 @@ export const GradesView = () => {
 
   const loadClasses = async () => {
     try {
-      const res = await classesApi.list();
+      // Giảng viên chỉ tải các lớp do chính mình phụ trách/giảng dạy
+      const res = await classesApi.list(isTeacher ? { my_classes: true } : {});
       const clsList = res.data || [];
       setClasses(clsList);
-      if (clsList.length > 0 && !selectedClassId) {
-        setSelectedClassId(clsList[0].id);
+      if (clsList.length > 0) {
+        if (!selectedClassId || !clsList.some((c) => c.id === selectedClassId)) {
+          setSelectedClassId(clsList[0].id);
+        }
+      } else {
+        setSelectedClassId(0);
+        setGradingSheet([]);
       }
     } catch (e) {
       console.error(e);
@@ -581,7 +587,7 @@ export const GradesView = () => {
               <CheckCircle2 className="w-3.5 h-3.5" /> <span>Khóa điểm</span>
             </button>
           )}
-          {isSheetLocked && (
+          {isAdminOrStaff && isSheetLocked && (
             <button
               type="button"
               onClick={handleUnlockGrades}
@@ -590,7 +596,7 @@ export const GradesView = () => {
               <Unlock className="w-3.5 h-3.5" /> <span>Mở khóa điểm</span>
             </button>
           )}
-          {selectedClassId && (
+          {selectedClassId && (!isSheetLocked || isAdminOrStaff) && (
             <button
               type="button"
               onClick={() => setIsAddModalOpen(true)}
@@ -664,7 +670,7 @@ export const GradesView = () => {
             className="border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-slate-800 bg-white font-bold outline-hidden hover:border-slate-300 cursor-pointer shadow-2xs"
           >
             {classes.length === 0 ? (
-              <option value="">-- Không có lớp học nào --</option>
+              <option value="">{isTeacher ? '-- Bạn chưa được phân công lớp học nào --' : '-- Không có lớp học nào --'}</option>
             ) : (
               classes.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -673,10 +679,23 @@ export const GradesView = () => {
               ))
             )}
           </select>
+          {isTeacher && classes.length > 0 && (
+            <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200/80 px-2.5 py-1 rounded-xl">
+              Lớp bạn phụ trách ({classes.length})
+            </span>
+          )}
         </div>
-
-
       </div>
+
+      {/* Banner cảnh báo khi bảng điểm đã khóa sổ đối với Giảng viên */}
+      {isSheetLocked && isTeacher && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded-2xl text-xs font-semibold flex items-center gap-2.5 shadow-2xs">
+          <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+          <span>
+            Bảng điểm của lớp học này đã được Học vụ/Admin xác nhận và khóa sổ chính thức. Giảng viên chỉ có quyền xem kết quả, không thể mở khóa hoặc sửa điểm. Vui lòng liên hệ Phòng Học vụ nếu cần hỗ trợ điều chỉnh điểm.
+          </span>
+        </div>
+      )}
 
       {/* Grading Sheet Table */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">

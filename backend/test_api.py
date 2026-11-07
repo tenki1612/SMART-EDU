@@ -201,6 +201,37 @@ def run_tests():
     assert staff_confirm_res.status_code == 200
     print("✓ 11.2. Academic Staff Confirm & Lock Grade Sheet: PASSED")
 
+    # 11.2a Teacher is strictly forbidden from unlocking grades
+    teacher_unlock_attempt = client.patch("/api/v1/grades/classes/1/unlock", headers=t_headers)
+    assert teacher_unlock_attempt.status_code == 403, f"Expected 403, got {teacher_unlock_attempt.status_code}"
+    print("✓ 11.2a. Teacher Forbidden from Unlocking Grade Sheet: PASSED (403 Forbidden)")
+
+    # 11.2b Teacher cannot save/modify grades while grade sheet is locked
+    teacher_locked_attempt = client.post("/api/v1/grades/batch", json={
+        "class_id": 1,
+        "grades": [{"student_id": 1, "attendance_score": 9.0, "midterm_score": 9.0, "final_score": 9.0}]
+    }, headers=t_headers)
+    assert teacher_locked_attempt.status_code in (400, 422) or not teacher_locked_attempt.json().get("success", True)
+    print("✓ 11.2b. Teacher Blocked from Modifying Locked Grade Sheet: PASSED")
+
+    # 11.2c Teacher can only grade classes they teach (Forbidden from other teachers' classes)
+    teacher2_login = client.post("/api/v1/auth/login", json={"username": "teacher2", "password": "teacher123"})
+    assert teacher2_login.status_code == 200
+    t2_token = teacher2_login.json()["data"]["access_token"]
+    t2_headers = {"Authorization": f"Bearer {t2_token}"}
+    # Teacher 2 (Cô Mai) attempts to grade Class 2 (taught by Thầy Nam)
+    t2_unauthorized_attempt = client.post("/api/v1/grades/batch", json={
+        "class_id": 2,
+        "grades": [{"student_id": 1, "attendance_score": 9.0, "midterm_score": 9.0, "final_score": 9.0}]
+    }, headers=t2_headers)
+    assert t2_unauthorized_attempt.status_code == 403, f"Expected 403, got {t2_unauthorized_attempt.status_code}"
+    print("✓ 11.2c. Teacher Forbidden from Grading Other Teachers' Classes: PASSED (403 Forbidden)")
+
+    # 11.2d Academic Staff or Admin can unlock the grade sheet
+    staff_unlock_res = client.patch("/api/v1/grades/classes/1/unlock", headers=staff_headers)
+    assert staff_unlock_res.status_code == 200
+    print("✓ 11.2d. Academic Staff Successfully Unlocks Grade Sheet: PASSED")
+
     # 11.3 Student can only view their own grades
     student_grades_res = client.get("/api/v1/grades/my-grades", headers=s_headers)
     assert student_grades_res.status_code == 200

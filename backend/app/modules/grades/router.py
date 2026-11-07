@@ -1,5 +1,5 @@
 from typing import List
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.permissions import require_roles, RoleEnum, get_current_user_payload
@@ -12,21 +12,42 @@ from app.modules.grades.service import GradeService
 
 router = APIRouter()
 
+def _verify_teacher_class_access(db: Session, user_id: int, class_id: int):
+    """Xác thực giảng viên chỉ được xem và nhập điểm cho các lớp mình phụ trách"""
+    from app.modules.teachers.models import Teacher
+    from app.modules.classes.models import Class
+    cls = db.query(Class).filter(Class.id == class_id, Class.is_deleted == False).first()
+    if not cls:
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy lớp học ID {class_id}")
+    
+    teacher = db.query(Teacher).filter(Teacher.user_id == user_id, Teacher.is_deleted == False).first()
+    if not teacher or cls.teacher_id != teacher.id:
+        raise HTTPException(
+            status_code=403,
+            detail="Giảng viên chỉ có quyền xem và nhập điểm cho các lớp học do mình phụ trách/giảng dạy."
+        )
+
 @router.get("/classes/{class_id}/sheet", response_model=ApiResponse[List[ClassGradingSheetStudent]], summary="FR-69: Xem danh sách học viên phục vụ nhập điểm")
 def get_class_grading_sheet(
     class_id: int,
+    payload: dict = Depends(get_current_user_payload),
     db: Session = Depends(get_db),
     _ = Depends(require_roles([RoleEnum.ADMIN, RoleEnum.ACADEMIC_STAFF, RoleEnum.TEACHER]))
 ):
+    if payload.get("role") == RoleEnum.TEACHER.value:
+        _verify_teacher_class_access(db, int(payload["sub"]), class_id)
     sheet = GradeService.get_class_grading_sheet(db, class_id)
     return ApiResponse(data=sheet, message="Danh sách nhập điểm lớp học")
 
 @router.post("/batch", response_model=ApiResponse[bool], summary="FR-70, FR-71, FR-73, FR-74: Giảng viên nhập & Cập nhật điểm học viên")
 def save_grades(
     data: BatchGradeInputRequest,
+    payload: dict = Depends(get_current_user_payload),
     db: Session = Depends(get_db),
     _ = Depends(require_roles([RoleEnum.TEACHER]))
 ):
+    user_id = int(payload["sub"])
+    _verify_teacher_class_access(db, user_id, data.class_id)
     GradeService.save_grades(db, data)
     return ApiResponse(data=True, message="Lưu điểm và tổng hợp kết quả học tập thành công")
 
@@ -43,7 +64,7 @@ def confirm_grades(
 def unlock_grades(
     class_id: int,
     db: Session = Depends(get_db),
-    _ = Depends(require_roles([RoleEnum.ADMIN, RoleEnum.ACADEMIC_STAFF, RoleEnum.TEACHER]))
+    _ = Depends(require_roles([RoleEnum.ADMIN, RoleEnum.ACADEMIC_STAFF]))
 ):
     GradeService.unlock_grades(db, class_id)
     return ApiResponse(data=True, message="Đã mở khóa bảng điểm lớp học")
@@ -52,9 +73,12 @@ def unlock_grades(
 def add_student_to_grading_sheet(
     class_id: int,
     data: AddStudentGradeRequest,
+    payload: dict = Depends(get_current_user_payload),
     db: Session = Depends(get_db),
     _ = Depends(require_roles([RoleEnum.ADMIN, RoleEnum.TEACHER, RoleEnum.ACADEMIC_STAFF]))
 ):
+    if payload.get("role") == RoleEnum.TEACHER.value:
+        _verify_teacher_class_access(db, int(payload["sub"]), class_id)
     record = GradeService.add_student_to_grading_sheet(db, class_id, data)
     return ApiResponse(data=record, message="Đã thêm học viên vào bảng điểm thành công")
 
@@ -62,9 +86,12 @@ def add_student_to_grading_sheet(
 def delete_student_from_grading_sheet(
     class_id: int,
     student_id: int,
+    payload: dict = Depends(get_current_user_payload),
     db: Session = Depends(get_db),
     _ = Depends(require_roles([RoleEnum.ADMIN, RoleEnum.TEACHER, RoleEnum.ACADEMIC_STAFF]))
 ):
+    if payload.get("role") == RoleEnum.TEACHER.value:
+        _verify_teacher_class_access(db, int(payload["sub"]), class_id)
     GradeService.delete_student_from_grading_sheet(db, class_id, student_id)
     return ApiResponse(data=True, message="Đã xóa học viên khỏi bảng điểm lớp")
 

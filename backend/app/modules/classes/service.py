@@ -97,7 +97,8 @@ class ClassService:
         q: Optional[str] = None, 
         course_id: Optional[int] = None, 
         status: Optional[str] = None,
-        student_id: Optional[int] = None
+        student_id: Optional[int] = None,
+        teacher_id: Optional[int] = None
     ) -> List[dict]:
         query = db.query(Class).filter(Class.is_deleted == False)
         enrolled_ids = set()
@@ -112,6 +113,9 @@ class ClassService:
             # allow seeing all open classes. Otherwise, isolate to their enrolled classes.
             if status != "OPEN_FOR_ENROLLMENT":
                 query = query.filter(Class.id.in_(enrolled_ids))
+
+        if teacher_id is not None:
+            query = query.filter(Class.teacher_id == teacher_id)
 
         if q:
             query = query.filter(Class.class_code.ilike(f"%{q}%"))
