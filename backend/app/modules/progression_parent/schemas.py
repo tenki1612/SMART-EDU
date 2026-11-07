@@ -22,9 +22,28 @@ class ProgressionResponse(BaseModel):
     confirmed_by_name: Optional[str] = None
     confirmed_at: Optional[datetime] = None
     note: Optional[str] = None
+    created_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
+
+class StudentProgressionRequest(BaseModel):
+    next_course_id: int
+    current_course_id: Optional[int] = None
+    note: Optional[str] = None
+
+class ProgressionRejectRequest(BaseModel):
+    reason: Optional[str] = None
+
+class AvailableCourseResponse(BaseModel):
+    id: int
+    code: str
+    title: str
+    description: Optional[str] = None
+    target_level: Optional[str] = None
+    tuition_fee: float
+    duration_weeks: int
+    is_current: bool
 
 class ParentWardInfoResponse(BaseModel):
     student_id: int

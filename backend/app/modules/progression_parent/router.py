@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from app.core.database import get_db
@@ -7,11 +7,100 @@ from app.common.response import ApiResponse
 from app.modules.students.models import Student
 from app.modules.grades.schemas import GradeRecordResponse
 from app.modules.progression_parent.schemas import (
-    ProgressionCheckRequest, ProgressionResponse, ParentWardInfoResponse
+    ProgressionCheckRequest, ProgressionResponse, ParentWardInfoResponse,
+    StudentProgressionRequest, ProgressionRejectRequest, AvailableCourseResponse
 )
 from app.modules.progression_parent.service import ProgressionParentService
+from app.core.exceptions import BusinessException
 
 router = APIRouter()
+
+@router.get("/", response_model=ApiResponse[List[ProgressionResponse]], summary="Danh sách hồ sơ chuyển khóa học (Admin/Học vụ)")
+def list_progressions(
+    status: Optional[str] = Query(None, description="Lọc trạng thái: ALL, PENDING, CONFIRMED"),
+    student_id: Optional[int] = Query(None, description="Lọc theo mã học viên"),
+    db: Session = Depends(get_db),
+    _ = Depends(require_roles([RoleEnum.ADMIN, RoleEnum.ACADEMIC_STAFF]))
+):
+    results = ProgressionParentService.list_progressions(db, student_id=student_id, status=status)
+    return ApiResponse(data=results, message="Danh sách hồ sơ chuyển khóa học")
+
+@router.get("/my-progressions", response_model=ApiResponse[List[ProgressionResponse]], summary="Học viên xem hồ sơ chuyển khóa của mình")
+def get_my_progressions(
+    payload: dict = Depends(get_current_user_payload),
+    db: Session = Depends(get_db),
+    _ = Depends(require_roles([RoleEnum.STUDENT]))
+):
+    user_id = int(payload["sub"])
+    student = db.query(Student).filter(Student.user_id == user_id, Student.is_deleted == False).first()
+    if not student:
+        raise BusinessException("Không tìm thấy hồ sơ học viên.")
+    results = ProgressionParentService.list_progressions(db, student_id=student.id)
+    return ApiResponse(data=results, message="Hồ sơ chuyển khóa học của tôi")
+
+@router.get("/available-courses", response_model=ApiResponse[List[dict]], summary="Danh sách các khóa học mở tiếp nhận chuyển khóa")
+def get_available_courses(
+    payload: dict = Depends(get_current_user_payload),
+    db: Session = Depends(get_db)
+):
+    user_id = int(payload["sub"])
+    user_role = payload.get("role")
+    student_id = None
+    if user_role == RoleEnum.STUDENT.value:
+        student = db.query(Student).filter(Student.user_id == user_id, Student.is_deleted == False).first()
+        if student:
+            student_id = student.id
+    results = ProgressionParentService.get_available_courses(db, student_id=student_id)
+    return ApiResponse(data=results, message="Danh sách khóa học tiếp nhận chuyển khóa")
+
+@router.post("/request", response_model=ApiResponse[ProgressionResponse], summary="Học viên đăng ký chuyển khóa học")
+def request_progression(
+    data: StudentProgressionRequest,
+    payload: dict = Depends(get_current_user_payload),
+    db: Session = Depends(get_db),
+    _ = Depends(require_roles([RoleEnum.STUDENT, RoleEnum.ADMIN, RoleEnum.ACADEMIC_STAFF]))
+):
+    user_id = int(payload["sub"])
+    user_role = payload.get("role")
+    student = db.query(Student).filter(Student.user_id == user_id, Student.is_deleted == False).first()
+    if not student:
+        raise BusinessException("Không tìm thấy hồ sơ học viên tương ứng với tài khoản.")
+    
+    res = ProgressionParentService.request_progression(
+        db=db,
+        student_id=student.id,
+        next_course_id=data.next_course_id,
+        current_course_id=data.current_course_id,
+        note=data.note
+    )
+    return ApiResponse(data=res, message="Đã gửi yêu cầu đăng ký chuyển khóa học thành công! Vui lòng chờ Học vụ phê duyệt.")
+
+@router.patch("/{progression_id}/cancel", response_model=ApiResponse[bool], summary="Học viên hủy yêu cầu chuyển khóa khi chưa duyệt")
+def cancel_progression(
+    progression_id: int,
+    payload: dict = Depends(get_current_user_payload),
+    db: Session = Depends(get_db),
+    _ = Depends(require_roles([RoleEnum.STUDENT]))
+):
+    user_id = int(payload["sub"])
+    student = db.query(Student).filter(Student.user_id == user_id, Student.is_deleted == False).first()
+    if not student:
+        raise BusinessException("Không tìm thấy hồ sơ học viên.")
+    
+    ProgressionParentService.cancel_progression(db, student.id, progression_id)
+    return ApiResponse(data=True, message="Đã hủy yêu cầu chuyển khóa học thành công.")
+
+@router.patch("/{progression_id}/reject", response_model=ApiResponse[ProgressionResponse], summary="Học vụ từ chối yêu cầu chuyển khóa")
+def reject_progression(
+    progression_id: int,
+    data: ProgressionRejectRequest,
+    payload: dict = Depends(get_current_user_payload),
+    db: Session = Depends(get_db),
+    _ = Depends(require_roles([RoleEnum.ADMIN, RoleEnum.ACADEMIC_STAFF]))
+):
+    staff_id = int(payload["sub"])
+    res = ProgressionParentService.reject_progression(db, progression_id, staff_id, data.reason)
+    return ApiResponse(data=res, message="Đã từ chối yêu cầu chuyển khóa học.")
 
 @router.post("/check-eligibility", response_model=ApiResponse[ProgressionResponse], summary="FR-78: Kiểm tra điều kiện đăng ký khóa học tiếp theo")
 def check_progression(

@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { useConfirm } from '../context/ConfirmDialogContext';
 import { useHeaderSlot } from '../context/HeaderSlotContext';
-import { enrollmentsApi, classesApi } from '../services/api';
+import { enrollmentsApi, classesApi, progressionParentApi } from '../services/api';
 import { UserAvatar } from '../components/common/UserAvatar';
 import {
   CheckCircle2,
@@ -17,6 +17,8 @@ import {
   School,
   X,
   FileCheck2,
+  Info,
+  AlertTriangle,
 } from 'lucide-react';
 
 export const EnrollmentsView = () => {
@@ -37,16 +39,19 @@ export const EnrollmentsView = () => {
   const [rejectingRequestId, setRejectingRequestId] = useState(null);
   const [rejectionReason, setRejectionReason] = useState('');
   const [filterStatus, setFilterStatus] = useState('ALL');
+  const [myProgressions, setMyProgressions] = useState([]);
 
   const loadData = async () => {
     try {
       if (isStudent) {
-        const [resCls, resReq] = await Promise.all([
+        const [resCls, resReq, resProg] = await Promise.all([
           classesApi.list(undefined, 'OPEN_FOR_ENROLLMENT'),
           enrollmentsApi.getMyRequests(),
+          progressionParentApi.getMyProgressions().catch(() => ({ data: [] })),
         ]);
         setOpenClasses(resCls.data || []);
         setRequests(resReq.data || []);
+        setMyProgressions(resProg.data || []);
       } else if (isStaffOrAdmin) {
         const resReq = await enrollmentsApi.listAll(
           filterStatus === 'ALL' ? undefined : filterStatus
@@ -127,6 +132,15 @@ export const EnrollmentsView = () => {
       toast.error(e.message);
     }
   };
+
+  // Set of confirmed progression course IDs for student
+  const confirmedProgressionCourseIds = useMemo(() => {
+    const ids = new Set();
+    myProgressions.forEach((p) => {
+      if (p.is_confirmed) ids.add(p.next_course_id);
+    });
+    return ids;
+  }, [myProgressions]);
 
   // KPI Calculations
   const stats = useMemo(() => {
@@ -235,6 +249,16 @@ export const EnrollmentsView = () => {
       {/* Student: Open Classes to Register */}
       {isStudent && studentSubTab === 'classes' && (
         <div className="space-y-4">
+          <div className="p-4 bg-indigo-50/80 border border-indigo-200/80 rounded-2xl flex items-start gap-3">
+            <Info className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
+            <div className="text-xs text-indigo-950 space-y-1">
+              <span className="font-bold block">Quy tắc đăng ký lớp học:</span>
+              <p className="text-slate-600 font-medium leading-relaxed">
+                Học viên chỉ có thể đăng ký vào các lớp học thuộc khóa học mình đã theo học hoặc đã được Học vụ phê duyệt chuyển khóa. Nếu muốn học khóa học mới, vui lòng vào mục <strong>Chuyển khóa học & Lộ trình</strong> để gửi yêu cầu chuyển khóa trước.
+              </p>
+            </div>
+          </div>
+
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-2">
               <School className="w-4 h-4 text-indigo-600" />
@@ -268,6 +292,13 @@ export const EnrollmentsView = () => {
                     <p className="text-xs text-indigo-600 font-bold mt-1">
                       Chuẩn đầu ra: {cls.target_level}
                     </p>
+
+                    {!cls.is_enrolled && !confirmedProgressionCourseIds.has(cls.course_id) && (
+                      <div className="mt-2 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200/80 px-2 py-1 rounded-lg flex items-center gap-1">
+                        <AlertTriangle className="w-3 h-3 text-amber-600 shrink-0" />
+                        <span>Cần đăng ký chuyển khóa trước khi ghi danh</span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="mt-4 pt-3.5 border-t border-slate-100 flex items-center justify-between text-xs">

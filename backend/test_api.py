@@ -544,6 +544,67 @@ def run_tests():
     assert len(all_sessions) > len(t1_sessions) + len(t2_sessions)
     print(f"✓ 18.3. Admin Full Schedule Access ({len(all_sessions)} total sessions): PASSED")
 
+    # ================= 19. MANDATORY COURSE PROGRESSION BEFORE CLASS ENROLLMENT =================
+    # 19.1. Staff creates a class belonging to course 3 (TOEIC 750)
+    rand_prog = int(time.time())
+    new_toeic_res = client.post("/api/v1/classes/", json={
+        "class_code": f"TOEIC-750-T{rand_prog}",
+        "course_id": 3,
+        "max_capacity": 20
+    }, headers=staff_headers)
+    assert new_toeic_res.status_code == 200
+    new_toeic_cls_id = new_toeic_res.json()["data"]["id"]
+
+    # 19.2. Student attempts to enroll directly in Course 3 class without progression -> Strictly Blocked (400)
+    unauthorized_enroll = client.post("/api/v1/enrollments/", json={
+        "class_id": new_toeic_cls_id,
+        "note": "Cố tình ghi danh khi chưa chuyển khóa"
+    }, headers=s_headers)
+    assert unauthorized_enroll.status_code == 400
+    assert "chuyển khóa học" in unauthorized_enroll.json()["detail"].lower()
+    print("✓ 19.1. Prevent Direct Class Enrollment Without Approved Course Progression: PASSED")
+
+    # 19.3. Student submits Course Progression request to Course 3
+    prog_req_res = client.post("/api/v1/progression/request", json={
+        "next_course_id": 3,
+        "note": "Học viên đăng ký chuyển từ IELTS sang TOEIC 750"
+    }, headers=s_headers)
+    assert prog_req_res.status_code == 200
+    prog_data = prog_req_res.json()["data"]
+    prog_id = prog_data["id"]
+    assert prog_data["is_confirmed"] is False
+    print("✓ 19.2. Student Submit Course Progression Request: PASSED")
+
+    # 19.4. Student attempts to enroll while progression request is still PENDING -> Blocked (400)
+    pending_enroll = client.post("/api/v1/enrollments/", json={
+        "class_id": new_toeic_cls_id,
+        "note": "Cố tình ghi danh khi đơn chuyển khóa đang pending"
+    }, headers=s_headers)
+    assert pending_enroll.status_code == 400
+    assert "chờ phê duyệt" in pending_enroll.json()["detail"].lower()
+    print("✓ 19.3. Prevent Class Enrollment While Progression is PENDING: PASSED")
+
+    # 19.5. Academic Staff confirms the course progression request
+    confirm_prog_res = client.patch(f"/api/v1/progression/{prog_id}/confirm", headers=staff_headers)
+    assert confirm_prog_res.status_code == 200
+    assert confirm_prog_res.json()["data"]["is_confirmed"] is True
+    print("✓ 19.4. Academic Staff Confirm Course Progression: PASSED")
+
+    # 19.6. Student now enrolls successfully into the class of Course 3
+    success_enroll = client.post("/api/v1/enrollments/", json={
+        "class_id": new_toeic_cls_id,
+        "note": "Đăng ký sau khi đã được duyệt chuyển khóa"
+    }, headers=s_headers)
+    assert success_enroll.status_code == 200
+    enroll_id = success_enroll.json()["data"]["id"]
+    assert success_enroll.json()["data"]["status"] == "PENDING"
+    print("✓ 19.5. Student Successfully Enrolls into Class After Progression Approval: PASSED")
+
+    # 19.7. Clean up test data
+    client.patch(f"/api/v1/enrollments/{enroll_id}/cancel", headers=s_headers)
+    client.delete(f"/api/v1/classes/{new_toeic_cls_id}", headers=staff_headers)
+    print("✓ 19.6. Clean up Progression Test Class & Enrollment: PASSED")
+
     print("\n🎉 ALL BACKEND INTEGRATION TESTS PASSED (100% SUCCESS)!")
 
 if __name__ == "__main__":

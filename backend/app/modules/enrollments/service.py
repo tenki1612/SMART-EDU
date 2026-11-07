@@ -44,7 +44,41 @@ class EnrollmentService:
         
         if cls.current_enrolled >= cls.max_capacity:
             raise BusinessException("Lớp học đã đủ sĩ số, không thể gửi yêu cầu đăng ký.")
-        
+
+        # --- KIỂM TRA ĐIỀU KIỆN CHUYỂN KHÓA HỌC / TIẾN TRÌNH KHÓA HỌC ---
+        # Học viên phải có lịch sử học khóa học này HOẶC đã có xác nhận chuyển khóa học sang khóa này
+        has_course_history = db.query(ClassStudent).join(
+            Class, ClassStudent.class_id == Class.id
+        ).filter(
+            ClassStudent.student_id == student_id,
+            Class.course_id == cls.course_id,
+            ClassStudent.is_deleted == False
+        ).first() is not None
+
+        if not has_course_history:
+            from app.modules.progression_parent.models import CourseProgression
+            confirmed_prog = db.query(CourseProgression).filter(
+                CourseProgression.student_id == student_id,
+                CourseProgression.next_course_id == cls.course_id,
+                CourseProgression.is_confirmed == True,
+                CourseProgression.is_deleted == False
+            ).first()
+
+            if not confirmed_prog:
+                pending_prog = db.query(CourseProgression).filter(
+                    CourseProgression.student_id == student_id,
+                    CourseProgression.next_course_id == cls.course_id,
+                    CourseProgression.is_confirmed == False,
+                    CourseProgression.is_deleted == False
+                ).first()
+                if pending_prog:
+                    raise BusinessException(
+                        "Yêu cầu chuyển khóa học của bạn đang chờ phê duyệt. Vui lòng đợi Học vụ duyệt chuyển khóa trước khi đăng ký lớp học."
+                    )
+                raise BusinessException(
+                    "Học viên phải đăng ký chuyển khóa học và được phê duyệt trước khi đăng ký các lớp học thuộc khóa học này."
+                )
+
         # Check if already requested or enrolled
         existing_req = db.query(EnrollmentRequest).filter(
             EnrollmentRequest.student_id == student_id,

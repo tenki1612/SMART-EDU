@@ -31,7 +31,8 @@ class ProgressionParentService:
             "is_confirmed": p.is_confirmed,
             "confirmed_by_name": confirmer.full_name if confirmer else None,
             "confirmed_at": p.confirmed_at,
-            "note": p.note
+            "note": p.note,
+            "created_at": p.created_at
         }
 
     @staticmethod
@@ -75,6 +76,187 @@ class ProgressionParentService:
         db.commit()
         db.refresh(prog)
         return ProgressionParentService._format_progression(prog)
+
+    @staticmethod
+    def list_progressions(
+        db: Session,
+        student_id: Optional[int] = None,
+        status: Optional[str] = None
+    ) -> List[dict]:
+        q = db.query(CourseProgression).filter(CourseProgression.is_deleted == False)
+        if student_id:
+            q = q.filter(CourseProgression.student_id == student_id)
+        if status == "PENDING":
+            q = q.filter(CourseProgression.is_confirmed == False)
+        elif status == "CONFIRMED":
+            q = q.filter(CourseProgression.is_confirmed == True)
+        
+        q = q.order_by(CourseProgression.id.desc())
+        return [ProgressionParentService._format_progression(p) for p in q.all()]
+
+    @staticmethod
+    def request_progression(
+        db: Session,
+        student_id: int,
+        next_course_id: int,
+        current_course_id: Optional[int] = None,
+        note: Optional[str] = None
+    ) -> dict:
+        """
+        Học viên gửi yêu cầu đăng ký chuyển khóa học tiếp theo.
+        Tự động thẩm định điều kiện tiên quyết dựa trên điểm số khóa hiện tại.
+        """
+        student = db.query(Student).filter(Student.id == student_id, Student.is_deleted == False).first()
+        if not student:
+            raise NotFoundException("Học viên", student_id)
+
+        target_course = db.query(Course).filter(Course.id == next_course_id, Course.is_deleted == False).first()
+        if not target_course:
+            raise NotFoundException("Khóa học mục tiêu", next_course_id)
+
+        # Nếu không truyền current_course_id, tự động lấy khóa học gần nhất mà học viên đang/đã tham gia
+        if not current_course_id:
+            last_class_student = db.query(ClassStudent).join(Class).filter(
+                ClassStudent.student_id == student_id,
+                ClassStudent.is_deleted == False
+            ).order_by(ClassStudent.id.desc()).first()
+            if last_class_student:
+                current_course_id = last_class_student.enrolled_class.course_id
+            else:
+                current_course_id = next_course_id
+
+        # Kiểm tra nếu học viên đang học chính khóa này
+        is_already_enrolled = db.query(ClassStudent).join(Class).filter(
+            ClassStudent.student_id == student_id,
+            Class.course_id == next_course_id,
+            ClassStudent.is_deleted == False
+        ).first() is not None
+        if is_already_enrolled and current_course_id == next_course_id:
+            raise BusinessException("Bạn đã và đang học khóa học này, không thể gửi yêu cầu chuyển vào chính khóa học này.")
+
+        # Kiểm tra xem đã có đơn đăng ký chuyển sang khóa này chưa
+        existing = db.query(CourseProgression).filter(
+            CourseProgression.student_id == student_id,
+            CourseProgression.next_course_id == next_course_id,
+            CourseProgression.is_deleted == False
+        ).order_by(CourseProgression.id.desc()).first()
+
+        if existing:
+            if existing.is_confirmed:
+                raise BusinessException("Bạn đã được phê duyệt chuyển sang khóa học này rồi. Vui lòng đăng ký vào lớp học của khóa.")
+            else:
+                raise BusinessException("Bạn đã có yêu cầu chuyển sang khóa học này đang chờ phê duyệt.")
+
+        # Thẩm định điều kiện (nếu có khóa trước)
+        is_passed = False
+        if current_course_id and current_course_id != next_course_id:
+            student_classes = db.query(Class).join(ClassStudent).filter(
+                ClassStudent.student_id == student_id,
+                Class.course_id == current_course_id,
+                ClassStudent.is_deleted == False
+            ).all()
+
+            for c in student_classes:
+                grade = db.query(GradeRecord).filter(
+                    GradeRecord.class_id == c.id,
+                    GradeRecord.student_id == student_id,
+                    GradeRecord.result_status == "PASSED",
+                    GradeRecord.is_confirmed == True
+                ).first()
+                if grade:
+                    is_passed = True
+                    break
+        else:
+            is_passed = True
+
+        prog = CourseProgression(
+            student_id=student_id,
+            current_course_id=current_course_id,
+            next_course_id=next_course_id,
+            is_eligible=is_passed,
+            is_confirmed=False,
+            note=note or ("Học viên đăng ký chuyển khóa học." + (" Đủ điều kiện do đã đạt chuẩn đầu ra khóa trước." if is_passed else " Chưa đạt điểm chuẩn đầu ra khóa tiên quyết, chờ học vụ xét duyệt."))
+        )
+        db.add(prog)
+        db.commit()
+        db.refresh(prog)
+        return ProgressionParentService._format_progression(prog)
+
+    @staticmethod
+    def cancel_progression(db: Session, student_id: int, progression_id: int) -> bool:
+        prog = db.query(CourseProgression).filter(
+            CourseProgression.id == progression_id,
+            CourseProgression.student_id == student_id,
+            CourseProgression.is_deleted == False
+        ).first()
+        if not prog:
+            raise NotFoundException("Yêu cầu chuyển khóa", progression_id)
+        if prog.is_confirmed:
+            raise BusinessException("Không thể hủy yêu cầu đã được phê duyệt.")
+        
+        prog.is_deleted = True
+        db.commit()
+        return True
+
+    @staticmethod
+    def reject_progression(db: Session, progression_id: int, staff_user_id: int, reason: Optional[str] = None) -> dict:
+        prog = db.query(CourseProgression).filter(
+            CourseProgression.id == progression_id,
+            CourseProgression.is_deleted == False
+        ).first()
+        if not prog:
+            raise NotFoundException("Hồ sơ chuyển khóa", progression_id)
+        if prog.is_confirmed:
+            raise BusinessException("Không thể từ chối hồ sơ đã được phê duyệt.")
+        
+        prog.is_confirmed = False
+        prog.is_eligible = False
+        prog.confirmed_by = staff_user_id
+        prog.confirmed_at = datetime.now(timezone.utc)
+        prog.note = f"Từ chối: {reason}" if reason else "Học vụ từ chối yêu cầu chuyển khóa."
+        db.commit()
+        db.refresh(prog)
+        return ProgressionParentService._format_progression(prog)
+
+    @staticmethod
+    def get_available_courses(db: Session, student_id: Optional[int] = None) -> List[dict]:
+        """Danh sách các khóa học đang hoạt động có thể đăng ký chuyển tới"""
+        courses = db.query(Course).filter(Course.is_active == True, Course.is_deleted == False).all()
+        enrolled_course_ids = set()
+        confirmed_course_ids = set()
+        pending_course_ids = set()
+        if student_id:
+            enrolled = db.query(Class.course_id).join(ClassStudent).filter(
+                ClassStudent.student_id == student_id,
+                ClassStudent.is_deleted == False
+            ).all()
+            enrolled_course_ids = {c[0] for c in enrolled}
+
+            progressions = db.query(CourseProgression).filter(
+                CourseProgression.student_id == student_id,
+                CourseProgression.is_deleted == False
+            ).all()
+            for p in progressions:
+                if p.is_confirmed:
+                    confirmed_course_ids.add(p.next_course_id)
+                else:
+                    pending_course_ids.add(p.next_course_id)
+
+        results = []
+        for c in courses:
+            results.append({
+                "id": c.id,
+                "code": c.code,
+                "title": c.title,
+                "description": c.description,
+                "target_level": c.target_level,
+                "tuition_fee": float(c.tuition_fee) if c.tuition_fee else 0.0,
+                "duration_weeks": c.duration_weeks,
+                "is_current": c.id in enrolled_course_ids,
+                "is_confirmed": c.id in confirmed_course_ids,
+                "is_pending": c.id in pending_course_ids
+            })
+        return results
 
     @staticmethod
     def confirm_progression(db: Session, progression_id: int, staff_user_id: int) -> dict:

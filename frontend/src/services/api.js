@@ -356,6 +356,32 @@ export const gradesApi = {
 
 // 11. Progression & Parent API
 export const progressionParentApi = {
+    listAll: async (status, student_id) => {
+        const res = await apiClient.get('/progression/', {
+            params: { status, student_id },
+        });
+        return res.data;
+    },
+    getMyProgressions: async () => {
+        const res = await apiClient.get('/progression/my-progressions');
+        return res.data;
+    },
+    getAvailableCourses: async () => {
+        const res = await apiClient.get('/progression/available-courses');
+        return res.data;
+    },
+    requestProgression: async (data) => {
+        const res = await apiClient.post('/progression/request', data);
+        return res.data;
+    },
+    cancelProgression: async (id) => {
+        const res = await apiClient.patch(`/progression/${id}/cancel`);
+        return res.data;
+    },
+    rejectProgression: async (id, reason) => {
+        const res = await apiClient.patch(`/progression/${id}/reject`, { reason });
+        return res.data;
+    },
     checkEligibility: async (student_id, current_course_id, next_course_id) => {
         const res = await apiClient.post('/progression/check-eligibility', {
             student_id,
@@ -366,6 +392,12 @@ export const progressionParentApi = {
     },
     confirmProgression: async (progressionId) => {
         const res = await apiClient.patch(`/progression/${progressionId}/confirm`);
+        return res.data;
+    },
+    registerNextCourse: async (target_class_id) => {
+        const res = await apiClient.post('/progression/register-next', null, {
+            params: { target_class_id },
+        });
         return res.data;
     },
     getParentWards: async () => {
