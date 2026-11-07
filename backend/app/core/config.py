@@ -21,8 +21,20 @@ class Settings(BaseSettings):
     @classmethod
     def sanitize_database_url(cls, v):
         # Bỏ qua nếu là URL dạng Prisma "file:./dev.db" để tránh lỗi SQLAlchemy
-        if isinstance(v, str) and (v.startswith("file:") or not v.strip()):
-            return f"sqlite:///{_DEFAULT_DB.as_posix()}"
+        if isinstance(v, str):
+            if v.startswith("file:") or not v.strip():
+                return f"sqlite:///{_DEFAULT_DB.as_posix()}"
+            # Tự động loại bỏ tham số ?schema=... (tham số riêng của Prisma, psycopg2 không hỗ trợ)
+            from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+            try:
+                parsed = urlparse(v)
+                qs = parse_qs(parsed.query)
+                if "schema" in qs:
+                    qs.pop("schema", None)
+                    new_query = urlencode(qs, doseq=True)
+                    v = urlunparse(parsed._replace(query=new_query))
+            except Exception:
+                pass
         return v
     
     # CORS
