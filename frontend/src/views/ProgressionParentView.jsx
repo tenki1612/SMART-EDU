@@ -569,7 +569,7 @@ export const ProgressionParentView = () => {
 
                   <div className="mt-4 pt-3.5 border-t border-slate-100 flex items-center justify-between text-xs">
                     <span className="text-slate-700 font-bold tabular-nums">
-                      {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(c.tuition_fee)}
+                      {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(c.fee || c.tuition_fee || 0)}
                     </span>
 
                     {c.is_current ? (
@@ -1278,7 +1278,7 @@ export const ProgressionParentView = () => {
                     <span className="text-slate-500">Học phí:</span>
                     <span className="font-bold text-emerald-700">
                       {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(
-                        selectedCourseToTransfer.tuition_fee
+                        selectedCourseToTransfer.fee || selectedCourseToTransfer.tuition_fee || 0
                       )}
                     </span>
                   </div>

@@ -41,9 +41,12 @@ class AvailableCourseResponse(BaseModel):
     title: str
     description: Optional[str] = None
     target_level: Optional[str] = None
-    tuition_fee: float
+    fee: float = 0.0
+    tuition_fee: float = 0.0
     duration_weeks: int
     is_current: bool
+    is_confirmed: bool = False
+    is_pending: bool = False
 
 class ParentWardInfoResponse(BaseModel):
     student_id: int
