@@ -6,16 +6,17 @@ from app.common.base_model import TimestampMixin
 
 class CourseProgression(Base, TimestampMixin):
     """Kiểm tra điều kiện và chuyển khóa học tiếp theo (FR-78 -> FR-80)"""
-    __tablename__ = "course_progressions"
+    __tablename__ = "TIEN_TRINH_KHOA_HOC"
 
-    student_id = Column(Integer, ForeignKey("students.id"), nullable=False)
-    current_course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
-    next_course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
-    is_eligible = Column(Boolean, default=False)       # FR-78: Đủ điều kiện
-    is_confirmed = Column(Boolean, default=False)      # FR-79: Nhân viên học vụ xác nhận
-    confirmed_by = Column(Integer, ForeignKey("users.id"), nullable=True)
-    confirmed_at = Column(DateTime, nullable=True)
-    note = Column(Text, nullable=True)
+    id = Column("MaTienTrinh", Integer, primary_key=True, index=True, autoincrement=True)
+    student_id = Column("MaHocVien", Integer, ForeignKey("HOC_VIEN.MaHocVien"), nullable=False)
+    current_course_id = Column("MaKhoaHocHienTai", Integer, ForeignKey("KHOA_HOC.MaKhoaHoc"), nullable=False)
+    next_course_id = Column("MaKhoaHocTiepTheo", Integer, ForeignKey("KHOA_HOC.MaKhoaHoc"), nullable=False)
+    is_eligible = Column("DuDieuKien", Boolean, default=False)       # FR-78: Đủ điều kiện
+    is_confirmed = Column("DaXacNhan", Boolean, default=False)      # FR-79: Nhân viên học vụ xác nhận
+    confirmed_by = Column("MaNguoiXacNhan", Integer, ForeignKey("NGUOI_DUNG.MaNguoiDung"), nullable=True)
+    confirmed_at = Column("NgayXacNhan", DateTime, nullable=True)
+    note = Column("GhiChu", Text, nullable=True)
 
     # Relationships
     student = relationship("Student", back_populates="progressions")
@@ -25,13 +26,13 @@ class CourseProgression(Base, TimestampMixin):
 
 class ParentStudent(Base, TimestampMixin):
     """Liên kết Phụ huynh và Học viên được giám hộ (FR-81, FR-82)"""
-    __tablename__ = "parent_students"
+    __tablename__ = "PHU_HUYNH_HOC_VIEN"
 
-    parent_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    student_id = Column(Integer, ForeignKey("students.id"), nullable=False)
-    relationship_type = Column(String(50), default="Phụ huynh / Người giám hộ")
+    id = Column("MaPH_HV", Integer, primary_key=True, index=True, autoincrement=True)
+    parent_user_id = Column("MaNguoiDung_PH", Integer, ForeignKey("NGUOI_DUNG.MaNguoiDung"), nullable=False)
+    student_id = Column("MaHocVien", Integer, ForeignKey("HOC_VIEN.MaHocVien"), nullable=False)
+    relationship_type = Column("QuanHe", String(50), default="Phụ huynh / Người giám hộ")
 
     # Relationships
     parent_user = relationship("User", foreign_keys=[parent_user_id], back_populates="parent_links")
     student = relationship("Student", foreign_keys=[student_id], back_populates="parents")
-

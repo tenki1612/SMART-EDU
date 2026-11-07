@@ -6,22 +6,23 @@ from app.common.base_model import TimestampMixin
 from app.core.permissions import RoleEnum
 
 class User(Base, TimestampMixin):
-    __tablename__ = "users"
+    __tablename__ = "NGUOI_DUNG"
 
-    username = Column(String(50), unique=True, index=True, nullable=False)
-    email = Column(String(100), unique=True, index=True, nullable=False)
-    full_name = Column(String(100), nullable=False)
-    hashed_password = Column(String(255), nullable=False)
-    role = Column(SQLEnum(RoleEnum), default=RoleEnum.STUDENT, nullable=False)
-    phone = Column(String(20), nullable=True)
-    avatar_url = Column(String(500), nullable=True)
-    is_active = Column(Boolean, default=True)
+    id = Column("MaNguoiDung", Integer, primary_key=True, index=True, autoincrement=True)
+    username = Column("TenDangNhap", String(50), unique=True, index=True, nullable=False)
+    email = Column("Email", String(100), unique=True, index=True, nullable=False)
+    full_name = Column("HoTen", String(100), nullable=False)
+    hashed_password = Column("MatKhau", String(255), nullable=False)
+    role = Column("VaiTro", SQLEnum(RoleEnum), default=RoleEnum.STUDENT, nullable=False)
+    phone = Column("SoDienThoai", String(20), nullable=True)
+    avatar_url = Column("AnhDaiDien", String(500), nullable=True)
+    is_active = Column("TrangThai", Boolean, default=True)
 
     # Security: Login Lockout & Password Reset
-    failed_login_attempts = Column(Integer, default=0, nullable=False)
-    locked_until = Column(DateTime, nullable=True)
-    reset_token = Column(String(100), nullable=True)
-    reset_token_expires_at = Column(DateTime, nullable=True)
+    failed_login_attempts = Column("SoLanDangNhapSai", Integer, default=0, nullable=False)
+    locked_until = Column("ThoiGianKhoa", DateTime, nullable=True)
+    reset_token = Column("MaXacThucOTP", String(100), nullable=True)
+    reset_token_expires_at = Column("HanXacThucOTP", DateTime, nullable=True)
 
     # Relationships
     student_profile = relationship("Student", back_populates="user", uselist=False, cascade="all, delete-orphan")
@@ -40,4 +41,3 @@ class User(Base, TimestampMixin):
                 locked_time = locked_time.replace(tzinfo=timezone.utc)
             return locked_time > now
         return False
-
