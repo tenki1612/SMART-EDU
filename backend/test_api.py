@@ -517,6 +517,33 @@ def run_tests():
     assert st_roster.status_code == 403
     print("✓ 17.3. Student Class Roster Blocked: PASSED (403 Forbidden)")
 
+    # ================= 18. TEACHER SCHEDULE & TIMETABLE ISOLATION =================
+    # 18.1. Teacher 1 only sees their own schedule/teaching timetable
+    t1_schedules_res = client.get("/api/v1/schedules/", headers=t_headers)
+    assert t1_schedules_res.status_code == 200
+    t1_sessions = t1_schedules_res.json()["data"]
+    assert len(t1_sessions) > 0
+    # Every session returned must belong to teacher 1
+    for sess in t1_sessions:
+        assert sess["teacher_id"] == 1, f"Expected teacher_id 1, got {sess['teacher_id']}"
+    print(f"✓ 18.1. Teacher 1 Schedule Isolation ({len(t1_sessions)} teaching sessions): PASSED")
+
+    # 18.2. Teacher 2 only sees their own schedule
+    t2_schedules_res = client.get("/api/v1/schedules/", headers=t2_headers)
+    assert t2_schedules_res.status_code == 200
+    t2_sessions = t2_schedules_res.json()["data"]
+    assert len(t2_sessions) > 0
+    for sess in t2_sessions:
+        assert sess["teacher_id"] == 2, f"Expected teacher_id 2, got {sess['teacher_id']}"
+    print(f"✓ 18.2. Teacher 2 Schedule Isolation ({len(t2_sessions)} teaching sessions): PASSED")
+
+    # 18.3. Admin sees all teaching schedules across all teachers
+    admin_schedules_res = client.get("/api/v1/schedules/", headers=headers)
+    assert admin_schedules_res.status_code == 200
+    all_sessions = admin_schedules_res.json()["data"]
+    assert len(all_sessions) > len(t1_sessions) + len(t2_sessions)
+    print(f"✓ 18.3. Admin Full Schedule Access ({len(all_sessions)} total sessions): PASSED")
+
     print("\n🎉 ALL BACKEND INTEGRATION TESTS PASSED (100% SUCCESS)!")
 
 if __name__ == "__main__":

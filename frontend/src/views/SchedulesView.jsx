@@ -29,6 +29,8 @@ export const SchedulesView = () => {
   const confirm = useConfirm();
   const headerSlot = useHeaderSlot();
   const canManage = ['ADMIN', 'ACADEMIC_STAFF'].includes(user?.role || '');
+  const isTeacher = user?.role === 'TEACHER';
+  const isStudent = user?.role === 'STUDENT';
 
   // Data states
   const [schedules, setSchedules] = useState([]);
@@ -111,11 +113,12 @@ export const SchedulesView = () => {
   const loadData = async () => {
     setLoading(true);
     try {
+      const fetchPersonal = isTeacher || isStudent || showPersonalOnly;
       const [resSchedules, resRooms, resTeachers, resClasses, resCourses] = await Promise.all([
-        showPersonalOnly ? schedulesApi.getPersonal() : schedulesApi.list(),
+        fetchPersonal ? schedulesApi.getPersonal() : schedulesApi.list(),
         classroomsApi.list().catch(() => ({ data: [] })),
         teachersApi.list().catch(() => ({ data: [] })),
-        classesApi.list().catch(() => ({ data: [] })),
+        classesApi.list(isTeacher ? { my_classes: true } : {}).catch(() => ({ data: [] })),
         coursesApi.list().catch(() => ({ data: [] })),
       ]);
       setSchedules(resSchedules.data || []);
@@ -545,74 +548,81 @@ export const SchedulesView = () => {
             {/* Hai nút tương tác: Giáo viên & Khóa học */}
             <div className="flex items-center gap-2 flex-wrap shrink-0">
               
-              {/* Nút tương tác 1: Giáo viên */}
-              <div className="relative schedule-filter-dropdown">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowTeacherDropdown(prev => !prev);
-                    setShowCourseDropdown(false);
-                  }}
-                  className={`px-3.5 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 border shadow-2xs ${
-                    selectedTeacherId
-                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-indigo-200'
-                      : 'bg-white hover:bg-slate-50 border-slate-200/90 text-slate-700'
-                  }`}
-                  title="Lọc thời khóa biểu theo Giáo viên"
-                >
-                  <GraduationCap className={`w-4 h-4 ${selectedTeacherId ? 'text-white' : 'text-indigo-600'}`} />
-                  <span className="max-w-[150px] truncate">
-                    {selectedTeacherId
-                      ? (availableTeachers.find(t => String(t.id) === String(selectedTeacherId))?.name || 'Giáo viên')
-                      : 'Giáo viên'}
-                  </span>
-                  <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showTeacherDropdown ? 'rotate-180' : ''} ${selectedTeacherId ? 'text-white/80' : 'text-slate-400'}`} />
-                </button>
+              {/* Nút tương tác 1: Giáo viên (hoặc Huy hiệu lịch dạy cá nhân nếu là Giảng viên) */}
+              {isTeacher ? (
+                <div className="px-3.5 py-2 rounded-2xl text-xs font-bold flex items-center gap-2 border bg-indigo-50 border-indigo-200/90 text-indigo-700 shadow-2xs">
+                  <GraduationCap className="w-4 h-4 text-indigo-600 shrink-0" />
+                  <span className="max-w-[200px] truncate">Lịch dạy: {user?.full_name || 'Cá nhân'}</span>
+                </div>
+              ) : (
+                <div className="relative schedule-filter-dropdown">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowTeacherDropdown(prev => !prev);
+                      setShowCourseDropdown(false);
+                    }}
+                    className={`px-3.5 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 border shadow-2xs ${
+                      selectedTeacherId
+                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-indigo-200'
+                        : 'bg-white hover:bg-slate-50 border-slate-200/90 text-slate-700'
+                    }`}
+                    title="Lọc thời khóa biểu theo Giáo viên"
+                  >
+                    <GraduationCap className={`w-4 h-4 ${selectedTeacherId ? 'text-white' : 'text-indigo-600'}`} />
+                    <span className="max-w-[150px] truncate">
+                      {selectedTeacherId
+                        ? (availableTeachers.find(t => String(t.id) === String(selectedTeacherId))?.name || 'Giáo viên')
+                        : 'Giáo viên'}
+                    </span>
+                    <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showTeacherDropdown ? 'rotate-180' : ''} ${selectedTeacherId ? 'text-white/80' : 'text-slate-400'}`} />
+                  </button>
 
-                {/* Dropdown Menu Giáo viên */}
-                {showTeacherDropdown && (
-                  <div className="absolute left-0 sm:right-0 sm:left-auto mt-2 w-64 bg-white rounded-2xl shadow-xl border border-slate-200/90 py-2 z-40 animate-in fade-in zoom-in-95 duration-150">
-                    <div className="px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-100 flex items-center justify-between">
-                      <span>Lọc theo Giáo viên</span>
-                      <span className="text-slate-400 font-mono">{availableTeachers.length} GV</span>
+                  {/* Dropdown Menu Giáo viên */}
+                  {showTeacherDropdown && (
+                    <div className="absolute left-0 sm:right-0 sm:left-auto mt-2 w-64 bg-white rounded-2xl shadow-xl border border-slate-200/90 py-2 z-40 animate-in fade-in zoom-in-95 duration-150">
+                      <div className="px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-100 flex items-center justify-between">
+                        <span>Lọc theo Giáo viên</span>
+                        <span className="text-slate-400 font-mono">{availableTeachers.length} GV</span>
+                      </div>
+                      <div className="max-h-60 overflow-y-auto py-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedTeacherId('');
+                            setShowTeacherDropdown(false);
+                          }}
+                          className={`w-full px-3.5 py-2 text-left text-xs font-medium flex items-center justify-between hover:bg-slate-50 cursor-pointer ${
+                            !selectedTeacherId ? 'text-indigo-600 font-bold bg-indigo-50/50' : 'text-slate-700'
+                          }`}
+                        >
+                          <span>Tất cả giáo viên</span>
+                          {!selectedTeacherId && <Check className="w-3.5 h-3.5 text-indigo-600" />}
+                        </button>
+                        {availableTeachers.map((t) => {
+                          const isSelected = String(selectedTeacherId) === String(t.id);
+                          return (
+                            <button
+                              key={t.id}
+                              type="button"
+                              onClick={() => {
+                                setSelectedTeacherId(t.id);
+                                setShowTeacherDropdown(false);
+                              }}
+                              className={`w-full px-3.5 py-2 text-left text-xs font-medium flex items-center justify-between hover:bg-slate-50 cursor-pointer ${
+                                isSelected ? 'text-indigo-600 font-bold bg-indigo-50/50' : 'text-slate-700'
+                              }`}
+                            >
+                              <span className="truncate pr-2">{t.name}</span>
+                              {isSelected && <Check className="w-3.5 h-3.5 text-indigo-600 shrink-0" />}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
-                    <div className="max-h-60 overflow-y-auto py-1">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedTeacherId('');
-                          setShowTeacherDropdown(false);
-                        }}
-                        className={`w-full px-3.5 py-2 text-left text-xs font-medium flex items-center justify-between hover:bg-slate-50 cursor-pointer ${
-                          !selectedTeacherId ? 'text-indigo-600 font-bold bg-indigo-50/50' : 'text-slate-700'
-                        }`}
-                      >
-                        <span>Tất cả giáo viên</span>
-                        {!selectedTeacherId && <Check className="w-3.5 h-3.5 text-indigo-600" />}
-                      </button>
-                      {availableTeachers.map((t) => {
-                        const isSelected = String(selectedTeacherId) === String(t.id);
-                        return (
-                          <button
-                            key={t.id}
-                            type="button"
-                            onClick={() => {
-                              setSelectedTeacherId(t.id);
-                              setShowTeacherDropdown(false);
-                            }}
-                            className={`w-full px-3.5 py-2 text-left text-xs font-medium flex items-center justify-between hover:bg-slate-50 cursor-pointer ${
-                              isSelected ? 'text-indigo-600 font-bold bg-indigo-50/50' : 'text-slate-700'
-                            }`}
-                          >
-                            <span className="truncate pr-2">{t.name}</span>
-                            {isSelected && <Check className="w-3.5 h-3.5 text-indigo-600 shrink-0" />}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
+              )}
 
               {/* Nút tương tác 2: Khóa học */}
               <div className="relative schedule-filter-dropdown">

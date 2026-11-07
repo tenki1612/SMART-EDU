@@ -3,7 +3,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from app.core.database import get_db
-from app.core.permissions import require_roles, RoleEnum, get_current_user_payload
+from app.core.permissions import require_roles, RoleEnum, get_current_user_payload, get_optional_user_payload
 from app.common.response import ApiResponse
 from app.modules.schedules.schemas import (
     ScheduleSessionCreate, ScheduleSessionUpdate, ScheduleSessionResponse,
@@ -62,8 +62,18 @@ def list_schedules(
     teacher_id: Optional[int] = Query(None, description="Lọc theo giảng viên"),
     from_date: Optional[date] = Query(None, description="Từ ngày"),
     to_date: Optional[date] = Query(None, description="Đến ngày"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    payload: Optional[dict] = Depends(get_optional_user_payload)
 ):
+    # Giảng viên chỉ có thể xem thời khóa biểu và lịch dạy của chính mình
+    if payload and payload.get("role") == RoleEnum.TEACHER.value:
+        from app.modules.teachers.models import Teacher
+        user_id = int(payload.get("sub", 0)) if "sub" in payload else payload.get("user_id")
+        teacher = db.query(Teacher).filter(Teacher.user_id == user_id, Teacher.is_deleted == False).first()
+        if not teacher:
+            return ApiResponse(data=[], message="Chưa tìm thấy hồ sơ giảng viên")
+        teacher_id = teacher.id
+
     sessions = ScheduleService.list_sessions(db, class_id=class_id, teacher_id=teacher_id, from_date=from_date, to_date=to_date)
     return ApiResponse(data=sessions, message="Thời khóa biểu")
 
