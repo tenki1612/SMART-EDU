@@ -162,20 +162,53 @@ class AuthService:
 
     @staticmethod
     def forgot_password(db: Session, req: ForgotPasswordRequest) -> ForgotPasswordResponse:
-        """Tạo mã OTP xác thực khôi phục mật khẩu và gửi về Email hoặc Số điện thoại (SMS)"""
-        identifier = req.identifier.strip()
-        channel = req.channel.strip().upper() if req.channel else "EMAIL"
-        if channel not in ["EMAIL", "SMS"]:
-            channel = "EMAIL"
+        """
+        Tạo mã OTP xác thực khôi phục mật khẩu.
+        Yêu cầu kiểm tra trùng khớp cả Email và Số điện thoại trong database,
+        sau đó gửi mã OTP đồng thời về cả hộp thư Email và tin nhắn SMS (không lộ mã trên client).
+        """
+        user = None
+        email_input = req.email.strip().lower() if req.email else None
+        phone_input = req.phone.strip() if req.phone else None
 
-        # Tra cứu theo Username, Email hoặc Số điện thoại
-        user = db.query(User).filter(
-            (User.username == identifier) | (User.email == identifier) | (User.phone == identifier),
-            User.is_deleted == False
-        ).first()
+        # 1. Trường hợp người dùng nhập cả Email và Số điện thoại (Phương thức chuẩn xác thực kép)
+        if email_input and phone_input:
+            user = db.query(User).filter(
+                User.email == email_input,
+                User.phone == phone_input,
+                User.is_deleted == False
+            ).first()
 
-        if not user:
-            raise NotFoundException("Tài khoản người dùng", identifier)
+            if not user:
+                # Kiểm tra chi tiết để cung cấp thông báo rõ ràng cho người dùng
+                has_email = db.query(User).filter(User.email == email_input, User.is_deleted == False).first()
+                has_phone = db.query(User).filter(User.phone == phone_input, User.is_deleted == False).first()
+                if has_email and not has_phone:
+                    raise BusinessException("Địa chỉ Email tồn tại nhưng Số điện thoại không khớp với hồ sơ tài khoản này.")
+                elif has_phone and not has_email:
+                    raise BusinessException("Số điện thoại tồn tại nhưng Địa chỉ Email không khớp với hồ sơ tài khoản này.")
+                else:
+                    raise BusinessException("Không tìm thấy tài khoản nào khớp với cả Email và Số điện thoại đã nhập.")
+
+        # 2. Trường hợp fallback identifier / email / phone (tương thích backward & test suites)
+        elif email_input:
+            user = db.query(User).filter(User.email == email_input, User.is_deleted == False).first()
+            if not user:
+                raise NotFoundException("Tài khoản người dùng với email", email_input)
+        elif phone_input:
+            user = db.query(User).filter(User.phone == phone_input, User.is_deleted == False).first()
+            if not user:
+                raise NotFoundException("Tài khoản người dùng với số điện thoại", phone_input)
+        elif req.identifier:
+            id_val = req.identifier.strip()
+            user = db.query(User).filter(
+                (User.username == id_val) | (User.email == id_val) | (User.phone == id_val),
+                User.is_deleted == False
+            ).first()
+            if not user:
+                raise NotFoundException("Tài khoản người dùng", id_val)
+        else:
+            raise BusinessException("Vui lòng nhập đầy đủ cả Địa chỉ Email và Số điện thoại để hệ thống đối soát tài khoản.")
 
         if not user.is_active:
             raise BusinessException("Tài khoản này đã bị vô hiệu hóa, vui lòng liên hệ bộ phận Học vụ.")
@@ -186,33 +219,48 @@ class AuthService:
         user.reset_token_expires_at = datetime.now(timezone.utc) + timedelta(minutes=RESET_CODE_EXPIRY_MINUTES)
         db.commit()
 
-        # Thực hiện gửi mã theo kênh được chỉ định
-        if channel == "SMS":
-            if not user.phone or not user.phone.strip():
-                raise BusinessException(
-                    "Tài khoản của bạn chưa cập nhật số điện thoại trong hồ sơ. "
-                    "Vui lòng chọn hình thức 'Gửi qua Email' để nhận mã OTP."
-                )
-            target_masked = mask_phone(user.phone)
-            _, status_msg = send_otp_sms(
-                to_phone=user.phone.strip(),
-                recipient_name=user.full_name,
-                otp_code=otp_code,
-                expires_in_minutes=RESET_CODE_EXPIRY_MINUTES
-            )
-            resp_message = f"Mã xác thực OTP đã được gửi qua SMS tới số điện thoại {target_masked}. Hiệu lực {RESET_CODE_EXPIRY_MINUTES} phút."
-        else:
-            target_masked = mask_email(user.email)
-            _, status_msg = send_otp_email(
+        # Xác định các kênh gửi: Mặc định gửi cả EMAIL và SMS
+        channel = req.channel.strip().upper() if req.channel else "BOTH"
+        masked_email = mask_email(user.email) if user.email else ""
+        masked_phone = mask_phone(user.phone) if user.phone else ""
+
+        # Gửi Email
+        if channel in ["BOTH", "EMAIL"] and user.email:
+            send_otp_email(
                 to_email=user.email.strip(),
                 recipient_name=user.full_name,
                 otp_code=otp_code,
                 expires_in_minutes=RESET_CODE_EXPIRY_MINUTES
             )
-            resp_message = f"Mã xác thực OTP đã được gửi tới địa chỉ email {target_masked}. Hiệu lực {RESET_CODE_EXPIRY_MINUTES} phút."
+
+        # Gửi SMS
+        if channel in ["BOTH", "SMS"] and user.phone:
+            send_otp_sms(
+                to_phone=user.phone.strip(),
+                recipient_name=user.full_name,
+                otp_code=otp_code,
+                expires_in_minutes=RESET_CODE_EXPIRY_MINUTES
+            )
+
+        if user.email and user.phone:
+            target_desc = f"email {masked_email} và tin nhắn SMS tới số {masked_phone}"
+            target_masked = f"{masked_email} & {masked_phone}"
+        elif user.email:
+            target_desc = f"email {masked_email}"
+            target_masked = masked_email
+        else:
+            target_desc = f"tin nhắn SMS tới số {masked_phone}"
+            target_masked = masked_phone
+
+        resp_message = (
+            f"Mã xác thực OTP đã được gửi đồng thời tới {target_desc}. "
+            f"Vui lòng kiểm tra hộp thư hoặc tin nhắn điện thoại để lấy mã xác thực. (Hiệu lực {RESET_CODE_EXPIRY_MINUTES} phút)"
+        )
 
         return ForgotPasswordResponse(
-            identifier=identifier,
+            identifier=user.username,
+            email=user.email,
+            phone=user.phone or "",
             channel=channel,
             target_masked=target_masked,
             reset_code=otp_code,
@@ -223,20 +271,23 @@ class AuthService:
     @staticmethod
     def reset_password(db: Session, req: ResetPasswordRequest) -> ResetPasswordResponse:
         """Xác thực mã OTP và đặt mật khẩu mới, đồng thời giải phóng khóa tài khoản"""
-        identifier = req.identifier.strip()
+        id_val = req.identifier.strip() if req.identifier else (req.email.strip() if req.email else (req.phone.strip() if req.phone else ""))
+        if not id_val:
+            raise BusinessException("Vui lòng cung cấp định danh tài khoản để đặt lại mật khẩu.")
+
         user = db.query(User).filter(
-            (User.username == identifier) | (User.email == identifier) | (User.phone == identifier),
+            (User.username == id_val) | (User.email == id_val) | (User.phone == id_val),
             User.is_deleted == False
         ).first()
 
         if not user:
-            raise NotFoundException("Tài khoản người dùng", identifier)
+            raise NotFoundException("Tài khoản người dùng", id_val)
 
         if len(req.new_password) < 6:
             raise BusinessException("Mật khẩu mới phải có độ dài tối thiểu 6 ký tự.")
 
         if not user.reset_token or user.reset_token.strip() != req.reset_code.strip():
-            raise BusinessException("Mã xác thực OTP không chính xác. Vui lòng kiểm tra lại tin nhắn hoặc email.")
+            raise BusinessException("Mã xác thực OTP không chính xác. Vui lòng kiểm tra lại tin nhắn SMS hoặc email.")
 
         # Kiểm tra hạn sử dụng của mã OTP
         if user.reset_token_expires_at:
