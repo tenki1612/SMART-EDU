@@ -1,4 +1,5 @@
 from typing import List, Optional
+from datetime import timedelta
 from sqlalchemy.orm import Session
 from app.modules.classes.models import Class, ClassStudent
 from app.modules.courses.models import Course
@@ -45,6 +46,12 @@ class ClassService:
             if not teacher:
                 raise NotFoundException("Giáo viên", data.teacher_id)
         
+        # Tự động tính ngày kết thúc dựa vào số tuần của khóa học (duration_weeks)
+        calculated_end_date = data.end_date
+        if data.start_date:
+            weeks = course.duration_weeks if (course.duration_weeks and course.duration_weeks > 0) else 12
+            calculated_end_date = data.start_date + timedelta(weeks=weeks)
+
         cls = Class(
             class_code=data.class_code,
             course_id=data.course_id,
@@ -52,7 +59,7 @@ class ClassService:
             max_capacity=data.max_capacity,
             current_enrolled=0,
             start_date=data.start_date,
-            end_date=data.end_date,
+            end_date=calculated_end_date,
             status="OPEN_FOR_ENROLLMENT"
         )
         db.add(cls)
@@ -82,6 +89,10 @@ class ClassService:
         
         if data.start_date is not None:
             cls.start_date = data.start_date
+            # Tự động tính lại ngày kết thúc nếu không nhập thủ công end_date
+            if data.end_date is None and cls.course:
+                weeks = cls.course.duration_weeks if (cls.course.duration_weeks and cls.course.duration_weeks > 0) else 12
+                cls.end_date = data.start_date + timedelta(weeks=weeks)
         if data.end_date is not None:
             cls.end_date = data.end_date
         if data.status is not None:

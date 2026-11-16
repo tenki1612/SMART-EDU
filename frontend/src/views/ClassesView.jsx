@@ -83,6 +83,51 @@ export const ClassesView = () => {
     loadData();
   }, [searchTerm, statusFilter]);
 
+  // Helper: Tự động tính ngày kết thúc từ ngày bắt đầu và thời lượng khóa học (tuần)
+  const calculateEndDate = (startDateStr, courseId) => {
+    if (!startDateStr || !courseId) return '';
+    const selectedCourse = courses.find((c) => String(c.id) === String(courseId));
+    const weeks = selectedCourse?.duration_weeks || 12;
+    const date = new Date(startDateStr);
+    if (isNaN(date.getTime())) return '';
+    date.setDate(date.getDate() + weeks * 7);
+    return date.toISOString().split('T')[0];
+  };
+
+  const getCourseDurationWeeks = (courseId) => {
+    if (!courseId) return null;
+    const selectedCourse = courses.find((c) => String(c.id) === String(courseId));
+    return selectedCourse?.duration_weeks || null;
+  };
+
+  const handleNewClassCourseChange = (courseId) => {
+    const computedEnd = calculateEndDate(newClass.start_date, courseId);
+    setNewClass((prev) => ({
+      ...prev,
+      course_id: courseId,
+      end_date: computedEnd || prev.end_date,
+    }));
+  };
+
+  const handleNewClassStartDateChange = (startDate) => {
+    const computedEnd = calculateEndDate(startDate, newClass.course_id);
+    setNewClass((prev) => ({
+      ...prev,
+      start_date: startDate,
+      end_date: computedEnd,
+    }));
+  };
+
+  const handleEditStartDateChange = (startDate) => {
+    const courseId = editingClass?.course_id;
+    const computedEnd = calculateEndDate(startDate, courseId);
+    setEditForm((prev) => ({
+      ...prev,
+      start_date: startDate,
+      end_date: computedEnd || prev.end_date,
+    }));
+  };
+
   const handleCreateClass = async (e) => {
     e.preventDefault();
     if (!newClass.class_code || !newClass.course_id) {
@@ -600,13 +645,13 @@ export const ClassesView = () => {
                 <select
                   required
                   value={newClass.course_id}
-                  onChange={(e) => setNewClass({ ...newClass, course_id: e.target.value })}
+                  onChange={(e) => handleNewClassCourseChange(e.target.value)}
                   className="w-full border border-slate-300 p-2.5 rounded-xl bg-white font-bold outline-hidden focus:border-indigo-600"
                 >
                   <option value="">-- Chọn khóa học --</option>
                   {courses.map((c) => (
                     <option key={c.id} value={c.id}>
-                      {c.code} - {c.title} ({c.target_level})
+                      {c.code} - {c.title} ({c.duration_weeks ? `${c.duration_weeks} tuần` : c.target_level})
                     </option>
                   ))}
                 </select>
@@ -647,18 +692,27 @@ export const ClassesView = () => {
                   <label className="font-bold text-slate-700 block mb-1">Ngày bắt đầu:</label>
                   <input
                     type="date"
+                    required
                     value={newClass.start_date}
-                    onChange={(e) => setNewClass({ ...newClass, start_date: e.target.value })}
+                    onChange={(e) => handleNewClassStartDateChange(e.target.value)}
                     className="w-full border border-slate-300 p-2.5 rounded-xl font-medium outline-hidden focus:border-indigo-600"
                   />
                 </div>
                 <div>
-                  <label className="font-bold text-slate-700 block mb-1">Ngày kết thúc:</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="font-bold text-slate-700">Ngày kết thúc:</label>
+                    {getCourseDurationWeeks(newClass.course_id) && (
+                      <span className="text-[10px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded-md">
+                        Tự động (+{getCourseDurationWeeks(newClass.course_id)} tuần)
+                      </span>
+                    )}
+                  </div>
                   <input
                     type="date"
                     value={newClass.end_date}
-                    onChange={(e) => setNewClass({ ...newClass, end_date: e.target.value })}
-                    className="w-full border border-slate-300 p-2.5 rounded-xl font-medium outline-hidden focus:border-indigo-600"
+                    readOnly
+                    title="Ngày kết thúc được tự động tính dựa theo số tuần của khóa học"
+                    className="w-full border border-slate-200 bg-slate-50/80 p-2.5 rounded-xl font-medium text-slate-600 cursor-not-allowed outline-hidden"
                   />
                 </div>
               </div>
@@ -763,12 +817,19 @@ export const ClassesView = () => {
                   <input
                     type="date"
                     value={editForm.start_date}
-                    onChange={(e) => setEditForm({ ...editForm, start_date: e.target.value })}
+                    onChange={(e) => handleEditStartDateChange(e.target.value)}
                     className="w-full border border-slate-300 p-2.5 rounded-xl font-medium outline-hidden focus:border-indigo-600"
                   />
                 </div>
                 <div>
-                  <label className="font-bold text-slate-700 block mb-1">Ngày kết thúc:</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="font-bold text-slate-700">Ngày kết thúc:</label>
+                    {getCourseDurationWeeks(editingClass?.course_id) && (
+                      <span className="text-[10px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded-md">
+                        Tự động (+{getCourseDurationWeeks(editingClass?.course_id)} tuần)
+                      </span>
+                    )}
+                  </div>
                   <input
                     type="date"
                     value={editForm.end_date}
