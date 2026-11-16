@@ -40,6 +40,19 @@ class Settings(BaseSettings):
     # CORS
     BACKEND_CORS_ORIGINS: List[str] = ["http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173", "*"]
 
+    # SMTP Email Configuration (Optional)
+    SMTP_HOST: str | None = None
+    SMTP_PORT: int = 587
+    SMTP_USER: str | None = None
+    SMTP_PASSWORD: str | None = None
+    SMTP_FROM_EMAIL: str = "noreply@smartedu.vn"
+    SMTP_FROM_NAME: str = "SMART-EDU LMS"
+    SMTP_TLS: bool = True
+
+    # SMS Gateway Configuration (Optional)
+    SMS_API_KEY: str | None = None
+    SMS_SENDER_NAME: str = "SMARTEDU"
+
     class Config:
         case_sensitive = True
         env_file = str(_BASE_DIR / ".env")

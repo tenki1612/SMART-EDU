@@ -9,6 +9,7 @@ from app.modules.auth.schemas import (
     ForgotPasswordRequest, ForgotPasswordResponse,
     ResetPasswordRequest, ResetPasswordResponse
 )
+from app.common.notifier import mask_email, mask_phone, send_otp_email, send_otp_sms
 
 MAX_FAILED_ATTEMPTS = 5
 LOCKOUT_MINUTES = 15
@@ -161,10 +162,15 @@ class AuthService:
 
     @staticmethod
     def forgot_password(db: Session, req: ForgotPasswordRequest) -> ForgotPasswordResponse:
-        """Tạo mã OTP xác thực khôi phục mật khẩu"""
+        """Tạo mã OTP xác thực khôi phục mật khẩu và gửi về Email hoặc Số điện thoại (SMS)"""
         identifier = req.identifier.strip()
+        channel = req.channel.strip().upper() if req.channel else "EMAIL"
+        if channel not in ["EMAIL", "SMS"]:
+            channel = "EMAIL"
+
+        # Tra cứu theo Username, Email hoặc Số điện thoại
         user = db.query(User).filter(
-            (User.username == identifier) | (User.email == identifier),
+            (User.username == identifier) | (User.email == identifier) | (User.phone == identifier),
             User.is_deleted == False
         ).first()
 
@@ -180,11 +186,38 @@ class AuthService:
         user.reset_token_expires_at = datetime.now(timezone.utc) + timedelta(minutes=RESET_CODE_EXPIRY_MINUTES)
         db.commit()
 
+        # Thực hiện gửi mã theo kênh được chỉ định
+        if channel == "SMS":
+            if not user.phone or not user.phone.strip():
+                raise BusinessException(
+                    "Tài khoản của bạn chưa cập nhật số điện thoại trong hồ sơ. "
+                    "Vui lòng chọn hình thức 'Gửi qua Email' để nhận mã OTP."
+                )
+            target_masked = mask_phone(user.phone)
+            _, status_msg = send_otp_sms(
+                to_phone=user.phone.strip(),
+                recipient_name=user.full_name,
+                otp_code=otp_code,
+                expires_in_minutes=RESET_CODE_EXPIRY_MINUTES
+            )
+            resp_message = f"Mã xác thực OTP đã được gửi qua SMS tới số điện thoại {target_masked}. Hiệu lực {RESET_CODE_EXPIRY_MINUTES} phút."
+        else:
+            target_masked = mask_email(user.email)
+            _, status_msg = send_otp_email(
+                to_email=user.email.strip(),
+                recipient_name=user.full_name,
+                otp_code=otp_code,
+                expires_in_minutes=RESET_CODE_EXPIRY_MINUTES
+            )
+            resp_message = f"Mã xác thực OTP đã được gửi tới địa chỉ email {target_masked}. Hiệu lực {RESET_CODE_EXPIRY_MINUTES} phút."
+
         return ForgotPasswordResponse(
             identifier=identifier,
+            channel=channel,
+            target_masked=target_masked,
             reset_code=otp_code,
             expires_in_minutes=RESET_CODE_EXPIRY_MINUTES,
-            message=f"Mã OTP khôi phục mật khẩu đã được gửi (Mã demo: {otp_code}). Mã có hiệu lực trong {RESET_CODE_EXPIRY_MINUTES} phút."
+            message=resp_message
         )
 
     @staticmethod
@@ -192,7 +225,7 @@ class AuthService:
         """Xác thực mã OTP và đặt mật khẩu mới, đồng thời giải phóng khóa tài khoản"""
         identifier = req.identifier.strip()
         user = db.query(User).filter(
-            (User.username == identifier) | (User.email == identifier),
+            (User.username == identifier) | (User.email == identifier) | (User.phone == identifier),
             User.is_deleted == False
         ).first()
 
@@ -203,7 +236,7 @@ class AuthService:
             raise BusinessException("Mật khẩu mới phải có độ dài tối thiểu 6 ký tự.")
 
         if not user.reset_token or user.reset_token.strip() != req.reset_code.strip():
-            raise BusinessException("Mã xác thực OTP không chính xác.")
+            raise BusinessException("Mã xác thực OTP không chính xác. Vui lòng kiểm tra lại tin nhắn hoặc email.")
 
         # Kiểm tra hạn sử dụng của mã OTP
         if user.reset_token_expires_at:

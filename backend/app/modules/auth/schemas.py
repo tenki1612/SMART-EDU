@@ -37,10 +37,13 @@ class UserInfoResponse(BaseModel):
         from_attributes = True
 
 class ForgotPasswordRequest(BaseModel):
-    identifier: str # Username hoặc Email
+    identifier: str # Username, Email hoặc Số điện thoại
+    channel: str = "EMAIL" # Kênh gửi mã: "EMAIL" hoặc "SMS"
 
 class ForgotPasswordResponse(BaseModel):
     identifier: str
+    channel: str = "EMAIL"
+    target_masked: str = "" # Ví dụ: "kh***am@gmail.com" hoặc "090****567"
     reset_code: str
     expires_in_minutes: int = 15
     message: str

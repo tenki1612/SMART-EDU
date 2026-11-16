@@ -39,6 +39,8 @@ export const LoginView = () => {
 
   // Forgot password flow state
   const [forgotIdentifier, setForgotIdentifier] = useState('');
+  const [otpChannel, setOtpChannel] = useState('EMAIL'); // 'EMAIL' | 'SMS'
+  const [targetMasked, setTargetMasked] = useState('');
   const [resetCode, setResetCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -104,18 +106,20 @@ export const LoginView = () => {
 
   // Step 1: Request OTP for password reset
   const handleRequestOtp = async (e) => {
-    e.preventDefault();
+    if (e && e.preventDefault) e.preventDefault();
     setForgotError('');
     setForgotMsg('');
     setIsForgotLoading(true);
 
     try {
-      const res = await authApi.forgotPassword(forgotIdentifier);
+      const res = await authApi.forgotPassword(forgotIdentifier, otpChannel);
       setGeneratedOtp(res.data.reset_code);
       setResetCode(res.data.reset_code);
-      const msg = `Mã xác thực OTP đã được tạo: ${res.data.reset_code}`;
+      setTargetMasked(res.data.target_masked || '');
+      const channelLabel = res.data.channel === 'SMS' ? 'tin nhắn SMS' : 'Email';
+      const msg = res.data.message || `Mã xác thực OTP đã được gửi thành công: ${res.data.reset_code}`;
       setForgotMsg(msg);
-      toast.success('Mã OTP khôi phục đã được tạo thành công!');
+      toast.success(`Mã OTP đã được gửi qua ${channelLabel}!`);
       setAuthMode('forgot_reset');
     } catch (err) {
       const msg = err.message || 'Không thể tạo yêu cầu đặt lại mật khẩu.';
@@ -608,7 +612,7 @@ export const LoginView = () => {
                 <div className="space-y-1">
                   <h2 className="text-2xl font-black text-slate-900 tracking-tight">Quên mật khẩu</h2>
                   <p className="text-xs text-slate-500">
-                    Nhập tên đăng nhập hoặc email đã đăng ký để nhận mã OTP xác thực khôi phục tài khoản
+                    Nhập tên đăng nhập, email hoặc số điện thoại và chọn hình thức nhận mã OTP để khôi phục tài khoản
                   </p>
                 </div>
 
@@ -621,17 +625,59 @@ export const LoginView = () => {
 
                 <form onSubmit={handleRequestOtp} className="mt-6 space-y-4 text-xs">
                   <div>
-                    <label className="font-bold text-slate-700 block mb-1.5">Tên đăng nhập hoặc Email:</label>
+                    <label className="font-bold text-slate-700 block mb-1.5">Thông tin tài khoản cần khôi phục:</label>
                     <div className="relative">
-                      <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                      <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                       <input
                         type="text"
                         required
-                        placeholder="Nhập username hoặc email..."
+                        placeholder="Nhập tên đăng nhập, email hoặc số điện thoại..."
                         value={forgotIdentifier}
                         onChange={(e) => setForgotIdentifier(e.target.value)}
                         className="w-full pl-10 pr-3.5 py-3 rounded-2xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-600 focus:ring-4 focus:ring-indigo-100 outline-hidden font-medium transition"
                       />
+                    </div>
+                  </div>
+
+                  {/* Chọn phương thức nhận mã OTP: Email hoặc SMS */}
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1.5">Kênh nhận mã xác thực OTP:</label>
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => setOtpChannel('EMAIL')}
+                        className={`p-3 rounded-2xl border text-left cursor-pointer transition flex items-start gap-2.5 ${
+                          otpChannel === 'EMAIL'
+                            ? 'bg-indigo-50/70 border-indigo-600 text-indigo-900 ring-2 ring-indigo-200 shadow-sm'
+                            : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                        }`}
+                      >
+                        <div className={`p-1.5 rounded-xl ${otpChannel === 'EMAIL' ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-500'}`}>
+                          <Mail className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="font-bold text-xs">Gửi qua Email</div>
+                          <div className="text-[10px] text-slate-500">Hộp thư điện tử</div>
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setOtpChannel('SMS')}
+                        className={`p-3 rounded-2xl border text-left cursor-pointer transition flex items-start gap-2.5 ${
+                          otpChannel === 'SMS'
+                            ? 'bg-indigo-50/70 border-indigo-600 text-indigo-900 ring-2 ring-indigo-200 shadow-sm'
+                            : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                        }`}
+                      >
+                        <div className={`p-1.5 rounded-xl ${otpChannel === 'SMS' ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-500'}`}>
+                          <Phone className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="font-bold text-xs">Gửi qua SMS</div>
+                          <div className="text-[10px] text-slate-500">Tin nhắn điện thoại</div>
+                        </div>
+                      </button>
                     </div>
                   </div>
 
@@ -643,7 +689,7 @@ export const LoginView = () => {
                     {isForgotLoading ? (
                       <>
                         <RefreshCw className="w-4 h-4 animate-spin" />
-                        Đang tạo mã OTP...
+                        Đang gửi mã OTP...
                       </>
                     ) : (
                       <>
@@ -678,11 +724,22 @@ export const LoginView = () => {
                   </p>
                 </div>
 
+                {/* Banner thông báo kênh gửi mã */}
+                <div className="mt-4 p-3 rounded-2xl bg-indigo-50/80 border border-indigo-200 text-indigo-900 text-xs flex items-center gap-2.5">
+                  <div className="p-1.5 bg-indigo-600 text-white rounded-xl shrink-0">
+                    {otpChannel === 'SMS' ? <Phone className="w-3.5 h-3.5" /> : <Mail className="w-3.5 h-3.5" />}
+                  </div>
+                  <div>
+                    Mã OTP đã được gửi qua <strong>{otpChannel === 'SMS' ? 'Tin nhắn SMS' : 'Email'}</strong> tới:
+                    <span className="font-mono font-bold text-indigo-700 ml-1.5">{targetMasked || forgotIdentifier}</span>
+                  </div>
+                </div>
+
                 {generatedOtp && (
-                  <div className="mt-4 p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center justify-between">
+                  <div className="mt-2.5 p-3 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Sparkles className="w-4 h-4 text-amber-600" />
-                      <span>Mã OTP của bạn: <strong className="font-mono text-sm text-indigo-700">{generatedOtp}</strong></span>
+                      <span>Mã xác thực của bạn: <strong className="font-mono text-sm text-indigo-700">{generatedOtp}</strong></span>
                     </div>
                     <span className="text-[10px] text-amber-700 font-semibold">(Hiệu lực 15 phút)</span>
                   </div>
@@ -697,7 +754,18 @@ export const LoginView = () => {
 
                 <form onSubmit={handleResetPassword} className="mt-5 space-y-3.5 text-xs">
                   <div>
-                    <label className="font-bold text-slate-700 block mb-1">Mã xác thực OTP (6 chữ số):</label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="font-bold text-slate-700">Mã xác thực OTP (6 chữ số):</label>
+                      <button
+                        type="button"
+                        disabled={isForgotLoading}
+                        onClick={handleRequestOtp}
+                        className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 hover:underline cursor-pointer flex items-center gap-1 disabled:opacity-50"
+                      >
+                        <RefreshCw className={`w-3 h-3 ${isForgotLoading ? 'animate-spin' : ''}`} />
+                        Gửi lại mã OTP
+                      </button>
+                    </div>
                     <input
                       type="text"
                       required

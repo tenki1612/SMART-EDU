@@ -38,8 +38,8 @@ export const authApi = {
         const res = await apiClient.get('/auth/roles-permissions');
         return res.data;
     },
-    forgotPassword: async (identifier) => {
-        const res = await apiClient.post('/auth/forgot-password', { identifier });
+    forgotPassword: async (identifier, channel = 'EMAIL') => {
+        const res = await apiClient.post('/auth/forgot-password', { identifier, channel });
         return res.data;
     },
     resetPassword: async (identifier, reset_code, new_password) => {
