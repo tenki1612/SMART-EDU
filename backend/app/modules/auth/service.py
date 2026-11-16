@@ -163,55 +163,42 @@ class AuthService:
     @staticmethod
     def forgot_password(db: Session, req: ForgotPasswordRequest) -> ForgotPasswordResponse:
         """
-        Tạo mã OTP xác thực khôi phục mật khẩu.
-        Yêu cầu kiểm tra trùng khớp cả Email và Số điện thoại trong database,
-        sau đó gửi mã OTP đồng thời về cả hộp thư Email và tin nhắn SMS (không lộ mã trên client).
+        Tạo mã OTP xác thực khôi phục mật khẩu và gửi trực tiếp về địa chỉ Email đăng ký.
         """
         user = None
         email_input = req.email.strip().lower() if req.email else None
-        phone_input = req.phone.strip() if req.phone else None
+        id_input = req.identifier.strip().lower() if req.identifier else None
 
-        # 1. Trường hợp người dùng nhập cả Email và Số điện thoại (Phương thức chuẩn xác thực kép)
-        if email_input and phone_input:
+        # 1. Tra cứu theo Email đăng ký
+        if email_input:
             user = db.query(User).filter(
                 User.email == email_input,
-                User.phone == phone_input,
                 User.is_deleted == False
             ).first()
+            if not user:
+                raise BusinessException(f"Địa chỉ Email '{email_input}' không tồn tại trong hệ thống. Vui lòng kiểm tra lại.")
 
-            if not user:
-                # Kiểm tra chi tiết để cung cấp thông báo rõ ràng cho người dùng
-                has_email = db.query(User).filter(User.email == email_input, User.is_deleted == False).first()
-                has_phone = db.query(User).filter(User.phone == phone_input, User.is_deleted == False).first()
-                if has_email and not has_phone:
-                    raise BusinessException("Địa chỉ Email tồn tại nhưng Số điện thoại không khớp với hồ sơ tài khoản này.")
-                elif has_phone and not has_email:
-                    raise BusinessException("Số điện thoại tồn tại nhưng Địa chỉ Email không khớp với hồ sơ tài khoản này.")
-                else:
-                    raise BusinessException("Không tìm thấy tài khoản nào khớp với cả Email và Số điện thoại đã nhập.")
-
-        # 2. Trường hợp fallback identifier / email / phone (tương thích backward & test suites)
-        elif email_input:
-            user = db.query(User).filter(User.email == email_input, User.is_deleted == False).first()
-            if not user:
-                raise NotFoundException("Tài khoản người dùng với email", email_input)
-        elif phone_input:
-            user = db.query(User).filter(User.phone == phone_input, User.is_deleted == False).first()
-            if not user:
-                raise NotFoundException("Tài khoản người dùng với số điện thoại", phone_input)
-        elif req.identifier:
-            id_val = req.identifier.strip()
+        # 2. Fallback định danh username / email (tương thích backward & test suites)
+        elif id_input:
             user = db.query(User).filter(
-                (User.username == id_val) | (User.email == id_val) | (User.phone == id_val),
+                (User.username == id_input) | (User.email == id_input),
                 User.is_deleted == False
             ).first()
             if not user:
-                raise NotFoundException("Tài khoản người dùng", id_val)
+                raise NotFoundException("Tài khoản người dùng", id_input)
+        elif req.phone:
+            phone_val = req.phone.strip()
+            user = db.query(User).filter(User.phone == phone_val, User.is_deleted == False).first()
+            if not user:
+                raise NotFoundException("Tài khoản người dùng với số điện thoại", phone_val)
         else:
-            raise BusinessException("Vui lòng nhập đầy đủ cả Địa chỉ Email và Số điện thoại để hệ thống đối soát tài khoản.")
+            raise BusinessException("Vui lòng nhập địa chỉ Email đăng ký của tài khoản.")
 
         if not user.is_active:
             raise BusinessException("Tài khoản này đã bị vô hiệu hóa, vui lòng liên hệ bộ phận Học vụ.")
+
+        if not user.email:
+            raise BusinessException("Tài khoản này chưa được cập nhật địa chỉ Email trong hồ sơ.")
 
         # Sinh mã OTP 6 chữ số ngẫu nhiên an toàn
         otp_code = f"{secrets.randbelow(900000) + 100000}"
@@ -219,50 +206,26 @@ class AuthService:
         user.reset_token_expires_at = datetime.now(timezone.utc) + timedelta(minutes=RESET_CODE_EXPIRY_MINUTES)
         db.commit()
 
-        # Xác định các kênh gửi: Mặc định gửi cả EMAIL và SMS
-        channel = req.channel.strip().upper() if req.channel else "BOTH"
-        masked_email = mask_email(user.email) if user.email else ""
-        masked_phone = mask_phone(user.phone) if user.phone else ""
+        # Gửi Email thật qua Gmail SMTP
+        send_otp_email(
+            to_email=user.email.strip(),
+            recipient_name=user.full_name,
+            otp_code=otp_code,
+            expires_in_minutes=RESET_CODE_EXPIRY_MINUTES
+        )
 
-        # Gửi Email
-        if channel in ["BOTH", "EMAIL"] and user.email:
-            send_otp_email(
-                to_email=user.email.strip(),
-                recipient_name=user.full_name,
-                otp_code=otp_code,
-                expires_in_minutes=RESET_CODE_EXPIRY_MINUTES
-            )
-
-        # Gửi SMS
-        if channel in ["BOTH", "SMS"] and user.phone:
-            send_otp_sms(
-                to_phone=user.phone.strip(),
-                recipient_name=user.full_name,
-                otp_code=otp_code,
-                expires_in_minutes=RESET_CODE_EXPIRY_MINUTES
-            )
-
-        if user.email and user.phone:
-            target_desc = f"email {masked_email} và tin nhắn SMS tới số {masked_phone}"
-            target_masked = f"{masked_email} & {masked_phone}"
-        elif user.email:
-            target_desc = f"email {masked_email}"
-            target_masked = masked_email
-        else:
-            target_desc = f"tin nhắn SMS tới số {masked_phone}"
-            target_masked = masked_phone
-
+        masked_email = mask_email(user.email)
         resp_message = (
-            f"Mã xác thực OTP đã được gửi đồng thời tới {target_desc}. "
-            f"Vui lòng kiểm tra hộp thư hoặc tin nhắn điện thoại để lấy mã xác thực. (Hiệu lực {RESET_CODE_EXPIRY_MINUTES} phút)"
+            f"Mã xác thực OTP đã được gửi thành công tới email {masked_email}. "
+            f"Vui lòng kiểm tra hộp thư (hoặc thư rác / spam) để lấy mã xác thực. (Hiệu lực {RESET_CODE_EXPIRY_MINUTES} phút)"
         )
 
         return ForgotPasswordResponse(
             identifier=user.username,
             email=user.email,
             phone=user.phone or "",
-            channel=channel,
-            target_masked=target_masked,
+            channel="EMAIL",
+            target_masked=masked_email,
             reset_code=otp_code,
             expires_in_minutes=RESET_CODE_EXPIRY_MINUTES,
             message=resp_message

@@ -40,8 +40,8 @@ export const authApi = {
     },
     forgotPassword: async (params) => {
         const payload = typeof params === 'string'
-            ? { identifier: params, channel: 'BOTH' }
-            : { ...params, channel: 'BOTH' };
+            ? { email: params, identifier: params, channel: 'EMAIL' }
+            : { channel: 'EMAIL', ...params };
         const res = await apiClient.post('/auth/forgot-password', payload);
         return res.data;
     },

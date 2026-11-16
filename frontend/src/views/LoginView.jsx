@@ -37,9 +37,8 @@ export const LoginView = () => {
   const [regError, setRegError] = useState('');
   const [isRegistering, setIsRegistering] = useState(false);
 
-  // Forgot password flow state (Dual check: Email + Phone, Send to Both)
+  // Forgot password flow state (Email OTP)
   const [forgotEmail, setForgotEmail] = useState('');
-  const [forgotPhone, setForgotPhone] = useState('');
   const [accountIdentifier, setAccountIdentifier] = useState('');
   const [targetMasked, setTargetMasked] = useState('');
   const [resetCode, setResetCode] = useState('');
@@ -104,14 +103,14 @@ export const LoginView = () => {
     }
   };
 
-  // Step 1: Request OTP for password reset (Dual check: Email & Phone)
+  // Step 1: Request OTP for password reset (Email-only)
   const handleRequestOtp = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
     setForgotError('');
     setForgotMsg('');
 
-    if (!forgotEmail.trim() || !forgotPhone.trim()) {
-      const errText = 'Vui lòng nhập đầy đủ cả Địa chỉ Email và Số điện thoại đã đăng ký.';
+    if (!forgotEmail.trim()) {
+      const errText = 'Vui lòng nhập địa chỉ Email đã đăng ký của tài khoản.';
       setForgotError(errText);
       toast.error(errText);
       return;
@@ -121,18 +120,17 @@ export const LoginView = () => {
 
     try {
       const res = await authApi.forgotPassword({
-        email: forgotEmail.trim(),
-        phone: forgotPhone.trim()
+        email: forgotEmail.trim().toLowerCase()
       });
       const data = res.data || res;
       setAccountIdentifier(data.identifier || forgotEmail.trim());
-      // TUYỆT ĐỐI KHÔNG gán OTP vào state client - người dùng phải tự kiểm tra Email/SMS để nhập
+      // TUYỆT ĐỐI KHÔNG gán OTP vào state client - người dùng mở Email để nhập
       setResetCode('');
-      setTargetMasked(data.target_masked || `${forgotEmail.trim()} & ${forgotPhone.trim()}`);
+      setTargetMasked(data.target_masked || forgotEmail.trim());
       
-      const msg = data.message || 'Mã xác thực OTP đã được gửi đồng thời tới cả Hộp thư Email và Tin nhắn SMS.';
+      const msg = data.message || `Mã xác thực OTP đã được gửi thành công tới email ${data.target_masked || forgotEmail.trim()}`;
       setForgotMsg(msg);
-      toast.success('Đã gửi mã OTP tới Email và Tin nhắn SMS!');
+      toast.success('Mã OTP đã được gửi tới hộp thư Email của bạn!');
       setAuthMode('forgot_reset');
     } catch (err) {
       const msg = err.message || 'Không thể tạo yêu cầu đặt lại mật khẩu.';
@@ -346,8 +344,8 @@ export const LoginView = () => {
                         onClick={() => {
                           if (username.includes('@')) {
                             setForgotEmail(username.trim());
-                          } else if (/^\d+$/.test(username.trim())) {
-                            setForgotPhone(username.trim());
+                          } else {
+                            setForgotEmail('');
                           }
                           setForgotError('');
                           setForgotMsg('');
@@ -615,7 +613,7 @@ export const LoginView = () => {
               </div>
             )}
 
-            {/* MODE 3: FORGOT PASSWORD - STEP 1 (REQUEST OTP) */}
+            {/* MODE 3: FORGOT PASSWORD - STEP 1 (REQUEST OTP VIA EMAIL) */}
             {authMode === 'forgot_request' && (
               <div>
                 <button
@@ -634,7 +632,7 @@ export const LoginView = () => {
                 <div className="space-y-1">
                   <h2 className="text-2xl font-black text-slate-900 tracking-tight">Quên mật khẩu</h2>
                   <p className="text-xs text-slate-500">
-                    Nhập Email và Số điện thoại đã đăng ký. Hệ thống sẽ tra cứu cơ sở dữ liệu để đối soát và gửi mã OTP đồng thời tới cả Email và tin nhắn SMS.
+                    Nhập địa chỉ Email đã đăng ký. Hệ thống sẽ tra cứu cơ sở dữ liệu và gửi mã xác thực OTP gồm 6 chữ số trực tiếp về hộp thư Email của bạn.
                   </p>
                 </div>
 
@@ -653,7 +651,7 @@ export const LoginView = () => {
                       <input
                         type="email"
                         required
-                        placeholder="ví dụ: student@center.edu.vn"
+                        placeholder="ví dụ: danhdanh678o@gmail.com hoặc student@center.edu.vn"
                         value={forgotEmail}
                         onChange={(e) => setForgotEmail(e.target.value)}
                         className="w-full pl-10 pr-3.5 py-3 rounded-2xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-600 focus:ring-4 focus:ring-indigo-100 outline-hidden font-medium transition"
@@ -661,45 +659,16 @@ export const LoginView = () => {
                     </div>
                   </div>
 
-                  <div>
-                    <label className="font-bold text-slate-700 block mb-1.5">Số điện thoại đăng ký:</label>
-                    <div className="relative">
-                      <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                      <input
-                        type="tel"
-                        required
-                        placeholder="ví dụ: 0901234567"
-                        value={forgotPhone}
-                        onChange={(e) => setForgotPhone(e.target.value)}
-                        className="w-full pl-10 pr-3.5 py-3 rounded-2xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-600 focus:ring-4 focus:ring-indigo-100 outline-hidden font-medium transition"
-                      />
+                  {/* Thông tin xác thực qua Email */}
+                  <div className="p-3.5 rounded-2xl bg-indigo-50/70 border border-indigo-200/80 text-indigo-900 text-xs flex items-start gap-3">
+                    <div className="p-2 rounded-xl bg-indigo-600 text-white shrink-0 mt-0.5">
+                      <Mail className="w-4 h-4" />
                     </div>
-                  </div>
-
-                  {/* Thông tin xác thực đối soát kép và gửi đồng thời */}
-                  <div className="p-3.5 rounded-2xl bg-indigo-50/70 border border-indigo-200/80 text-indigo-900 text-xs">
-                    <div className="font-bold flex items-center gap-1.5 mb-1 text-indigo-950">
-                      <Sparkles className="w-4 h-4 text-indigo-600" />
-                      Xác thực đối soát dữ liệu &amp; Gửi mã kép:
-                    </div>
-                    <p className="text-[11px] text-indigo-700 leading-relaxed mb-2.5">
-                      Hệ thống sẽ tra cứu cơ sở dữ liệu để kiểm tra trùng khớp giữa Email và Số điện thoại. Sau khi xác minh thành công, mã OTP 6 chữ số sẽ được gửi đồng thời tới cả 2 kênh:
-                    </p>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="flex items-center gap-2 p-2 rounded-xl bg-white border border-indigo-100 shadow-xs">
-                        <Mail className="w-4 h-4 text-indigo-600 shrink-0" />
-                        <div>
-                          <span className="font-bold text-[11px] block text-slate-800">Hộp thư Email</span>
-                          <span className="text-[10px] text-slate-400 block">Nhận mã OTP</span>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 p-2 rounded-xl bg-white border border-indigo-100 shadow-xs">
-                        <Phone className="w-4 h-4 text-emerald-600 shrink-0" />
-                        <div>
-                          <span className="font-bold text-[11px] block text-slate-800">Tin nhắn SMS</span>
-                          <span className="text-[10px] text-slate-400 block">Gửi về số điện thoại</span>
-                        </div>
-                      </div>
+                    <div>
+                      <div className="font-bold text-indigo-950 mb-0.5">Gửi mã OTP về Hộp thư điện tử</div>
+                      <p className="text-[11px] text-indigo-700 leading-relaxed">
+                        Hệ thống đối soát tài khoản trong cơ sở dữ liệu và gửi ngay mã OTP 6 chữ số (hiệu lực 15 phút) tới Email đăng ký.
+                      </p>
                     </div>
                   </div>
 
@@ -711,11 +680,11 @@ export const LoginView = () => {
                     {isForgotLoading ? (
                       <>
                         <RefreshCw className="w-4 h-4 animate-spin" />
-                        Đang đối soát database & gửi OTP...
+                        Đang tra cứu database &amp; gửi Email OTP...
                       </>
                     ) : (
                       <>
-                        Xác minh thông tin &amp; Gửi mã OTP
+                        Gửi mã xác thực OTP về Email
                         <ArrowRight className="w-4 h-4" />
                       </>
                     )}
@@ -736,28 +705,33 @@ export const LoginView = () => {
                   className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-slate-800 mb-6 transition cursor-pointer"
                 >
                   <ArrowLeft className="w-3.5 h-3.5" />
-                  Quay lại thông tin xác minh
+                  Đổi địa chỉ Email khác
                 </button>
 
                 <div className="space-y-1">
                   <h2 className="text-2xl font-black text-slate-900 tracking-tight">Đặt lại mật khẩu</h2>
                   <p className="text-xs text-slate-500">
-                    Nhập mã xác thực OTP gồm 6 chữ số nhận được trong Email hoặc tin nhắn SMS để thiết lập mật khẩu mới
+                    Nhập mã xác thực OTP gồm 6 chữ số nhận được trong Email để thiết lập mật khẩu mới
                   </p>
                 </div>
 
-                {/* Banner thông báo kênh gửi mã kép */}
-                <div className="mt-4 p-3.5 rounded-2xl bg-indigo-50/80 border border-indigo-200 text-indigo-900 text-xs">
-                  <div className="flex items-center gap-2 font-bold mb-1 text-indigo-950">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                    <span>Mã OTP đã được gửi đồng thời tới:</span>
+                {/* Banner thông báo kênh gửi Email */}
+                <div className="mt-4 p-3.5 rounded-2xl bg-indigo-50/80 border border-indigo-200 text-indigo-900 text-xs flex items-start gap-3">
+                  <div className="p-2 bg-indigo-600 text-white rounded-xl shrink-0 mt-0.5">
+                    <Mail className="w-4 h-4" />
                   </div>
-                  <div className="text-[11px] text-indigo-800 font-mono font-bold pl-6">
-                    {targetMasked || `${forgotEmail} & ${forgotPhone}`}
+                  <div>
+                    <div className="flex items-center gap-1.5 font-bold text-indigo-950">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>Mã OTP đã được gửi về Email:</span>
+                    </div>
+                    <div className="text-xs text-indigo-800 font-mono font-bold mt-1">
+                      {targetMasked || forgotEmail}
+                    </div>
+                    <p className="text-[11px] text-indigo-600/90 mt-1 leading-relaxed">
+                      Vui lòng mở ứng dụng hộp thư Email (kiểm tra cả mục Hộp thư đến và Thư rác / Spam) để lấy mã OTP gồm 6 chữ số và nhập vào bên dưới.
+                    </p>
                   </div>
-                  <p className="text-[11px] text-indigo-600/90 mt-2 pl-6 leading-relaxed">
-                    Vui lòng kiểm tra hộp thư đến (hoặc thư rác / spam) của Email và tin nhắn SMS trên điện thoại của bạn để lấy mã OTP gồm 6 chữ số và nhập vào bên dưới.
-                  </p>
                 </div>
 
                 {forgotError && (
