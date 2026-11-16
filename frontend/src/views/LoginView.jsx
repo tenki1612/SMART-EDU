@@ -456,7 +456,7 @@ export const LoginView = () => {
                         <input
                           type="text"
                           required
-                          placeholder="ví dụ: khang2026"
+                          placeholder="Nhập tên đăng nhập..."
                           value={regForm.username}
                           onChange={(e) => setRegForm({ ...regForm, username: e.target.value })}
                           className="w-full pl-10 pr-3.5 py-2.5 rounded-2xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-600 focus:ring-4 focus:ring-indigo-100 outline-hidden font-mono font-medium transition"
@@ -469,7 +469,7 @@ export const LoginView = () => {
                       <input
                         type="text"
                         required
-                        placeholder="ví dụ: Phạm Minh Khang"
+                        placeholder="Nhập họ và tên đầy đủ..."
                         value={regForm.full_name}
                         onChange={(e) => setRegForm({ ...regForm, full_name: e.target.value })}
                         className="w-full px-3.5 py-2.5 rounded-2xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-600 focus:ring-4 focus:ring-indigo-100 outline-hidden font-medium transition"
@@ -651,7 +651,7 @@ export const LoginView = () => {
                       <input
                         type="email"
                         required
-                        placeholder="ví dụ: danhdanh678o@gmail.com hoặc student@center.edu.vn"
+                        placeholder="Nhập địa chỉ email của bạn..."
                         value={forgotEmail}
                         onChange={(e) => setForgotEmail(e.target.value)}
                         className="w-full pl-10 pr-3.5 py-3 rounded-2xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-600 focus:ring-4 focus:ring-indigo-100 outline-hidden font-medium transition"
