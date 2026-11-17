@@ -43,7 +43,7 @@ def sync_to_postgres():
         ("GIANG_VIEN", "MaGiangVien"),
         ("LOP_HOC", "MaLopHoc"),
         ("TIEN_TRINH_KHOA_HOC", "MaTienTrinh"),
-        ("PHU_HUYNH_HOC_VIEN", "MaLienKet"),
+        ("PHU_HUYNH_HOC_VIEN", "MaPH_HV"),
         ("HOC_VIEN_LOP_HOC", "MaHV_LH"),
         ("YEU_CAU_DANG_KY", "MaYeuCau"),
         ("BUOI_HOC", "MaBuoiHoc"),
