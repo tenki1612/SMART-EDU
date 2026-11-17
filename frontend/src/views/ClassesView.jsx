@@ -30,6 +30,7 @@ export const ClassesView = () => {
   const confirm = useConfirm();
   const headerSlot = useHeaderSlot();
   const canManage = ['ADMIN', 'ACADEMIC_STAFF'].includes(user?.role || '');
+  const isTeacher = user?.role === 'TEACHER';
 
   const [classes, setClasses] = useState([]);
   const [teachers, setTeachers] = useState([]);
@@ -66,7 +67,7 @@ export const ClassesView = () => {
   const loadData = async () => {
     try {
       const [resCls, resTea, resCou] = await Promise.all([
-        classesApi.list(searchTerm, statusFilter || undefined),
+        classesApi.list(isTeacher ? { my_classes: true, q: searchTerm, status: statusFilter || undefined } : searchTerm, statusFilter || undefined),
         teachersApi.list().catch(() => ({ data: [] })),
         coursesApi.list('', true).catch(() => ({ data: [] })),
       ]);
@@ -332,13 +333,17 @@ export const ClassesView = () => {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
         <div className="bg-white p-4 sm:p-5 rounded-3xl border border-slate-200/90 shadow-2xs hover:border-indigo-200 hover:-translate-y-0.5 transition-all">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Tổng số lớp</span>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              {isTeacher ? 'Lớp bạn phụ trách' : 'Tổng số lớp'}
+            </span>
             <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
               <School className="w-4 h-4" />
             </div>
           </div>
           <div className="text-2xl font-black text-slate-900 tabular-nums">{stats.total}</div>
-          <div className="text-[11px] text-slate-500 mt-1 font-medium">Toàn bộ chi nhánh</div>
+          <div className="text-[11px] text-slate-500 mt-1 font-medium">
+            {isTeacher ? 'Phân công giảng dạy' : 'Toàn bộ chi nhánh'}
+          </div>
         </div>
 
         <div className="bg-white p-4 sm:p-5 rounded-3xl border border-slate-200/90 shadow-2xs hover:border-emerald-200 hover:-translate-y-0.5 transition-all">
@@ -458,6 +463,8 @@ export const ClassesView = () => {
                     <School className="w-8 h-8 text-slate-300 mx-auto mb-2" />
                     {user?.role === 'STUDENT' && !statusFilter && !searchTerm
                       ? 'Bạn hiện chưa được ghi danh vào lớp học nào.'
+                      : user?.role === 'TEACHER' && !statusFilter && !searchTerm
+                      ? 'Bạn hiện chưa được phân công phụ trách lớp học nào.'
                       : 'Không tìm thấy lớp học nào phù hợp.'}
                   </td>
                 </tr>
@@ -587,10 +594,15 @@ export const ClassesView = () => {
                             Đang theo học
                           </span>
                         ) : user?.role === 'TEACHER' ? (
-                          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-xl border border-indigo-200">
-                            <School className="w-3.5 h-3.5" />
-                            Giảng dạy
-                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenRoster(cls)}
+                            className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 hover:border-indigo-300 px-3 py-1.5 rounded-xl border border-indigo-200 transition cursor-pointer shadow-2xs"
+                            title="Xem danh sách học viên lớp học"
+                          >
+                            <Users className="w-3.5 h-3.5" />
+                            Xem học viên
+                          </button>
                         ) : (
                           <span className="text-slate-400 text-xs">-</span>
                         )}

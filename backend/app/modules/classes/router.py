@@ -51,7 +51,7 @@ def list_classes(
                 student_id = student.id
             else:
                 return ApiResponse(data=[], message="Học viên chưa có hồ sơ học tập")
-        elif user_role == RoleEnum.TEACHER.value and my_classes:
+        elif user_role == RoleEnum.TEACHER.value:
             from app.modules.teachers.models import Teacher
             teacher = db.query(Teacher).filter(Teacher.user_id == user_id, Teacher.is_deleted == False).first()
             if teacher:
@@ -67,8 +67,22 @@ def list_classes(
 @router.get("/{class_id}", response_model=ApiResponse[ClassResponse], summary="FR-35: Xem chi tiết lớp học (gồm cấp độ mục tiêu)")
 def get_class_detail(
     class_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    payload: Optional[dict] = Depends(get_optional_user_payload)
 ):
+    if payload and payload.get("role") == RoleEnum.TEACHER.value:
+        from app.modules.teachers.models import Teacher
+        from app.modules.classes.models import Class
+        user_id = int(payload.get("sub", 0)) if "sub" in payload else payload.get("user_id")
+        teacher = db.query(Teacher).filter(Teacher.user_id == user_id, Teacher.is_deleted == False).first()
+        raw_cls = db.query(Class).filter(Class.id == class_id, Class.is_deleted == False).first()
+        if not raw_cls:
+            raise HTTPException(status_code=404, detail="Không tìm thấy lớp học")
+        if not teacher or raw_cls.teacher_id != teacher.id:
+            raise HTTPException(
+                status_code=403,
+                detail="Giảng viên chỉ có quyền xem thông tin các lớp học do mình phụ trách/giảng dạy!"
+            )
     cls = ClassService.get_class_detail(db, class_id)
     return ApiResponse(data=cls, message="Chi tiết lớp học")
 

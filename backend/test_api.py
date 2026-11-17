@@ -606,6 +606,48 @@ def run_tests():
     client.delete(f"/api/v1/progression/{prog_id}", headers=staff_headers)
     print("✓ 19.6. Clean up Progression Test Class, Progression & Enrollment: PASSED")
 
+    # ================= 20. TEACHER CLASS & GRADE ISOLATION =================
+    # 20.1. Teacher 1 listing classes only returns classes taught by Teacher 1
+    t1_classes_res = client.get("/api/v1/classes/", headers=t_headers)
+    assert t1_classes_res.status_code == 200
+    t1_classes = t1_classes_res.json()["data"]
+    assert len(t1_classes) > 0
+    for c in t1_classes:
+        assert c["teacher_id"] == 1, f"Expected teacher_id 1, got {c['teacher_id']}"
+    print(f"✓ 20.1. Teacher 1 Class List Isolation ({len(t1_classes)} classes): PASSED")
+
+    # 20.2. Teacher 2 listing classes only returns classes taught by Teacher 2
+    t2_classes_res = client.get("/api/v1/classes/", headers=t2_headers)
+    assert t2_classes_res.status_code == 200
+    t2_classes = t2_classes_res.json()["data"]
+    assert len(t2_classes) > 0
+    for c in t2_classes:
+        assert c["teacher_id"] == 2, f"Expected teacher_id 2, got {c['teacher_id']}"
+    print(f"✓ 20.2. Teacher 2 Class List Isolation ({len(t2_classes)} classes): PASSED")
+
+    # 20.3. Teacher 2 forbidden from viewing Teacher 1 class details
+    t1_cls_id = t1_classes[0]["id"]
+    t2_cls_detail = client.get(f"/api/v1/classes/{t1_cls_id}", headers=t2_headers)
+    assert t2_cls_detail.status_code == 403, f"Expected 403, got {t2_cls_detail.status_code}"
+    print("✓ 20.3. Teacher Blocked from Viewing Other Teacher's Class Detail: PASSED (403 Forbidden)")
+
+    # 20.4. Teacher 2 forbidden from viewing Teacher 1 class student roster
+    t2_cls_roster = client.get(f"/api/v1/classes/{t1_cls_id}/students", headers=t2_headers)
+    assert t2_cls_roster.status_code == 403, f"Expected 403, got {t2_cls_roster.status_code}"
+    print("✓ 20.4. Teacher Blocked from Viewing Other Teacher's Class Roster: PASSED (403 Forbidden)")
+
+    # 20.5. Teacher 2 forbidden from viewing Teacher 1 class grading sheet
+    t2_grade_sheet = client.get(f"/api/v1/grades/classes/{t1_cls_id}/sheet", headers=t2_headers)
+    assert t2_grade_sheet.status_code == 403, f"Expected 403, got {t2_grade_sheet.status_code}"
+    print("✓ 20.5. Teacher Blocked from Viewing Other Teacher's Grading Sheet: PASSED (403 Forbidden)")
+
+    # 20.6. Teacher 1 viewing own class detail and grading sheet
+    t1_cls_detail = client.get(f"/api/v1/classes/{t1_cls_id}", headers=t_headers)
+    assert t1_cls_detail.status_code == 200
+    t1_grade_sheet = client.get(f"/api/v1/grades/classes/{t1_cls_id}/sheet", headers=t_headers)
+    assert t1_grade_sheet.status_code == 200
+    print("✓ 20.6. Teacher Own Class & Grade Access: PASSED (200 OK)")
+
     print("\n🎉 ALL BACKEND INTEGRATION TESTS PASSED (100% SUCCESS)!")
 
 if __name__ == "__main__":

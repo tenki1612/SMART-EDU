@@ -104,7 +104,7 @@ export const DashboardView = ({ onTabChange = () => {} }) => {
           setTodaySchedules((sc.data || []).slice(0, 5));
         } else if (isTeacher) {
           const [cl, sc] = await Promise.all([
-            classesApi.list().catch(() => ({ data: [] })),
+            classesApi.list({ my_classes: true }).catch(() => ({ data: [] })),
             schedulesApi.getPersonal().catch(() => ({ data: [] })),
           ]);
           const allClasses = cl.data || [];
