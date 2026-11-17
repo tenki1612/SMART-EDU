@@ -41,10 +41,36 @@ class AccountService:
 
     @staticmethod
     def create_user(db: Session, data: UserCreate) -> User:
-        # Check duplicate
-        if db.query(User).filter((User.username == data.username) | (User.email == data.email)).first():
-            raise BusinessException("Tên đăng nhập hoặc email đã tồn tại trong hệ thống.")
+        # Check duplicate username
+        if db.query(User).filter(User.username == data.username).first():
+            raise BusinessException(f"Tên đăng nhập '{data.username}' đã tồn tại trong hệ thống. Vui lòng chọn tên đăng nhập khác.")
         
+        # Check duplicate email
+        existing_email_user = db.query(User).filter(
+            User.email == data.email,
+            User.is_deleted == False
+        ).first()
+        if existing_email_user:
+            # Cho phép Admin/Staff/Teacher tạo thêm tài khoản Phụ huynh (hoặc ngược lại) với cùng email
+            allowed_shared_roles = {
+                RoleEnum.PARENT: {RoleEnum.ADMIN, RoleEnum.ACADEMIC_STAFF, RoleEnum.TEACHER},
+                RoleEnum.ADMIN: {RoleEnum.PARENT},
+                RoleEnum.ACADEMIC_STAFF: {RoleEnum.PARENT},
+                RoleEnum.TEACHER: {RoleEnum.PARENT},
+            }
+            # Nếu vai trò đang tạo trùng với vai trò đã có
+            same_role = db.query(User).filter(
+                User.email == data.email,
+                User.role == data.role,
+                User.is_deleted == False
+            ).first()
+            if same_role:
+                raise BusinessException(f"Email '{data.email}' đã được đăng ký cho một tài khoản vai trò {data.role.value}.")
+            
+            # Nếu không thuộc nhóm vai trò được phép chia sẻ email
+            if existing_email_user.role not in allowed_shared_roles.get(data.role, set()):
+                raise BusinessException(f"Email '{data.email}' đã tồn tại trong hệ thống cho tài khoản {existing_email_user.role.value}.")
+
         user = User(
             username=data.username,
             email=data.email,

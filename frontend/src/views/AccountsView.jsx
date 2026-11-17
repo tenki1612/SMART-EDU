@@ -868,6 +868,11 @@ export const AccountsView = () => {
                   onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
                   className="w-full border border-slate-300 p-2.5 rounded-xl font-medium outline-hidden focus:border-indigo-600"
                 />
+                {newUser.role === 'PARENT' && (
+                  <p className="text-[11px] text-amber-600 font-medium mt-1">
+                    💡 Tài khoản Phụ huynh có thể dùng chung Email và SĐT với tài khoản Quản trị/Giáo vụ/Giảng viên (Tên đăng nhập phải khác nhau).
+                  </p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">

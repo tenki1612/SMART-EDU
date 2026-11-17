@@ -648,6 +648,73 @@ def run_tests():
     assert t1_grade_sheet.status_code == 200
     print("✓ 20.6. Teacher Own Class & Grade Access: PASSED (200 OK)")
 
+    # ================= 21. SHARED EMAIL PARENT ACCOUNT CREATION FOR ADMIN & STAFF =================
+    admin_parent_id = None
+    staff_parent_id = None
+    try:
+        # 21.1. Admin creates a PARENT account using their own email and phone
+        admin_parent_username = f"admin_p_{int(time.time())}"
+        create_ap_res = client.post("/api/v1/accounts/", json={
+            "username": admin_parent_username,
+            "email": "admin@center.edu.vn",
+            "full_name": "Nguyễn Văn Quản Trị (PH)",
+            "password": "AdminParentPass123",
+            "phone": "0901234567",
+            "role": "PARENT"
+        }, headers=headers)
+        assert create_ap_res.status_code == 200, f"Expected 200, got {create_ap_res.status_code}: {create_ap_res.text}"
+        admin_parent_id = create_ap_res.json()["data"]["id"]
+        print("✓ 21.1. Admin Create Parent Account with Shared Email: PASSED (200 OK)")
+
+        # 21.2. Academic Staff creates a PARENT account using their own email and phone
+        staff_parent_username = f"staff_p_{int(time.time())}"
+        create_sp_res = client.post("/api/v1/accounts/", json={
+            "username": staff_parent_username,
+            "email": "staff@center.edu.vn",
+            "full_name": "Trần Thị Học Vụ (PH)",
+            "password": "StaffParentPass123",
+            "phone": "0912345678",
+            "role": "PARENT"
+        }, headers=staff_headers)
+        assert create_sp_res.status_code == 200, f"Expected 200, got {create_sp_res.status_code}: {create_sp_res.text}"
+        staff_parent_id = create_sp_res.json()["data"]["id"]
+        print("✓ 21.2. Staff Create Parent Account with Shared Email: PASSED (200 OK)")
+
+        # 21.3. Block creating another PARENT account with the same email (duplicate within same role)
+        dup_parent_res = client.post("/api/v1/accounts/", json={
+            "username": f"admin_p_dup_{int(time.time())}",
+            "email": "admin@center.edu.vn",
+            "full_name": "Admin Phụ Huynh 2",
+            "password": "AdminParentPass123",
+            "role": "PARENT"
+        }, headers=headers)
+        assert dup_parent_res.status_code == 400
+        assert "đã được đăng ký cho một tài khoản" in dup_parent_res.json()["detail"].lower()
+        print("✓ 21.3. Duplicate Parent Account with Same Email Blocked: PASSED (400 Bad Request)")
+
+        # 21.4. Login with distinct usernames sharing same email
+        ap_login = client.post("/api/v1/auth/login", json={
+            "username": admin_parent_username,
+            "password": "AdminParentPass123"
+        })
+        assert ap_login.status_code == 200
+        assert ap_login.json()["data"]["role"] == "PARENT"
+
+        adm_login = client.post("/api/v1/auth/login", json={
+            "username": "admin",
+            "password": "admin123"
+        })
+        assert adm_login.status_code == 200
+        assert adm_login.json()["data"]["role"] == "ADMIN"
+        print("✓ 21.4. Login with Shared Email Accounts via Username: PASSED")
+    finally:
+        # 21.5. Clean up created parent test accounts
+        if admin_parent_id:
+            client.delete(f"/api/v1/accounts/{admin_parent_id}", headers=headers)
+        if staff_parent_id:
+            client.delete(f"/api/v1/accounts/{staff_parent_id}", headers=headers)
+        print("✓ 21.5. Clean Up Test Parent Accounts: PASSED")
+
     print("\n🎉 ALL BACKEND INTEGRATION TESTS PASSED (100% SUCCESS)!")
 
 if __name__ == "__main__":

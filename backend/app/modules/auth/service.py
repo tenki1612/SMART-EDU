@@ -36,14 +36,37 @@ class AuthService:
 
     @staticmethod
     def authenticate_user(db: Session, creds: LoginRequest) -> TokenResponse:
+        login_input = creds.username.strip()
         # Truy vấn tìm tài khoản bất kể trạng thái is_deleted để phản hồi chính xác lý do lỗi
-        user = db.query(User).filter(
-            (User.username == creds.username) | (User.email == creds.username)
-        ).first()
+        matched_users = db.query(User).filter(
+            (User.username == login_input) | (User.email == login_input)
+        ).all()
         
         # 1. Trường hợp tài khoản không tồn tại
-        if not user:
+        if not matched_users:
             raise BusinessException("Tài khoản không tồn tại trong hệ thống. Vui lòng kiểm tra lại thông tin hoặc đăng ký tài khoản mới.")
+
+        if len(matched_users) == 1:
+            user = matched_users[0]
+        else:
+            # Nếu người dùng nhập chính xác username -> ưu tiên khớp username
+            exact_username = [u for u in matched_users if u.username.lower() == login_input.lower()]
+            if exact_username:
+                user = exact_username[0]
+            else:
+                # Đăng nhập bằng email dùng chung cho nhiều tài khoản (vd: Admin và Phụ huynh)
+                # Thử tìm tài khoản khớp mật khẩu nhập vào
+                valid_users = [u for u in matched_users if not u.is_deleted and verify_password(creds.password, u.hashed_password)]
+                if len(valid_users) == 1:
+                    user = valid_users[0]
+                elif len(valid_users) > 1:
+                    roles_str = " và ".join([u.role.value for u in valid_users])
+                    raise BusinessException(
+                        f"Địa chỉ email này dùng chung cho nhiều tài khoản ({roles_str}). "
+                        f"Vui lòng nhập Tên đăng nhập (Username) để chọn vai trò bạn muốn truy cập."
+                    )
+                else:
+                    user = matched_users[0]
 
         # 2. Trường hợp tài khoản đã bị xóa (Soft-deleted)
         if user.is_deleted:
@@ -113,17 +136,29 @@ class AuthService:
         if len(req.password) < 6:
             raise BusinessException("Mật khẩu phải có tối thiểu 6 ký tự.")
 
-        # Kiểm tra trùng lặp username hoặc email
-        existing = db.query(User).filter(
-            (User.username == username) | (User.email == email)
-        ).first()
-        if existing:
-            if existing.username == username:
-                raise BusinessException("Tên đăng nhập này đã được sử dụng. Vui lòng chọn tên đăng nhập khác.")
-            raise BusinessException("Địa chỉ email này đã được sử dụng. Vui lòng chọn email khác.")
-
         # Vai trò cho phép tự đăng ký: STUDENT hoặc PARENT
         chosen_role = req.role if req.role in [RoleEnum.STUDENT, RoleEnum.PARENT] else RoleEnum.STUDENT
+
+        # Kiểm tra trùng lặp username
+        existing_username = db.query(User).filter(User.username == username).first()
+        if existing_username:
+            raise BusinessException("Tên đăng nhập này đã được sử dụng. Vui lòng chọn tên đăng nhập khác.")
+
+        # Kiểm tra trùng lặp email
+        existing_email = db.query(User).filter(User.email == email, User.is_deleted == False).first()
+        if existing_email:
+            # Cho phép Phụ huynh dùng chung email với tài khoản Admin/Staff/Teacher đã có
+            allowed_shared = {
+                RoleEnum.PARENT: {RoleEnum.ADMIN, RoleEnum.ACADEMIC_STAFF, RoleEnum.TEACHER},
+                RoleEnum.ADMIN: {RoleEnum.PARENT},
+                RoleEnum.ACADEMIC_STAFF: {RoleEnum.PARENT},
+                RoleEnum.TEACHER: {RoleEnum.PARENT},
+            }
+            same_role = db.query(User).filter(User.email == email, User.role == chosen_role, User.is_deleted == False).first()
+            if same_role:
+                raise BusinessException(f"Địa chỉ email này đã được sử dụng cho một tài khoản {chosen_role.value}.")
+            if existing_email.role not in allowed_shared.get(chosen_role, set()):
+                raise BusinessException("Địa chỉ email này đã được sử dụng. Vui lòng chọn email khác.")
 
         user = User(
             username=username,
@@ -171,12 +206,50 @@ class AuthService:
 
         # 1. Tra cứu theo Email đăng ký
         if email_input:
-            user = db.query(User).filter(
+            users = db.query(User).filter(
                 User.email == email_input,
                 User.is_deleted == False
-            ).first()
-            if not user:
+            ).all()
+            if not users:
                 raise BusinessException(f"Địa chỉ Email '{email_input}' không tồn tại trong hệ thống. Vui lòng kiểm tra lại.")
+            if id_input:
+                matched = [u for u in users if u.username.lower() == id_input]
+                user = matched[0] if matched else users[0]
+            else:
+                user = users[0]
+
+            # Gán mã OTP chung cho các tài khoản dùng chung email này để tiện khôi phục
+            otp_code = f"{secrets.randbelow(900000) + 100000}"
+            expires_at = datetime.now(timezone.utc) + timedelta(minutes=RESET_CODE_EXPIRY_MINUTES)
+            for u in users:
+                if u.is_active:
+                    u.reset_token = otp_code
+                    u.reset_token_expires_at = expires_at
+            db.commit()
+
+            masked_email = mask_email(user.email)
+            resp_message = (
+                f"Mã OTP gồm 6 chữ số đã được gửi trực tiếp tới hòm thư Email {masked_email}. "
+                f"Vui lòng kiểm tra hộp thư (hoặc thư rác / spam) để lấy mã xác thực. (Hiệu lực {RESET_CODE_EXPIRY_MINUTES} phút)"
+            )
+
+            send_otp_email(
+                to_email=user.email.strip(),
+                recipient_name=user.full_name,
+                otp_code=otp_code,
+                expires_in_minutes=RESET_CODE_EXPIRY_MINUTES
+            )
+
+            return ForgotPasswordResponse(
+                identifier=user.username,
+                email=user.email,
+                phone=user.phone or "",
+                channel="EMAIL",
+                target_masked=masked_email,
+                reset_code=otp_code,
+                expires_in_minutes=RESET_CODE_EXPIRY_MINUTES,
+                message=resp_message
+            )
 
         # 2. Fallback định danh username / email (tương thích backward & test suites)
         elif id_input:
@@ -238,13 +311,20 @@ class AuthService:
         if not id_val:
             raise BusinessException("Vui lòng cung cấp định danh tài khoản để đặt lại mật khẩu.")
 
-        user = db.query(User).filter(
+        users = db.query(User).filter(
             (User.username == id_val) | (User.email == id_val) | (User.phone == id_val),
             User.is_deleted == False
-        ).first()
+        ).all()
 
-        if not user:
+        if not users:
             raise NotFoundException("Tài khoản người dùng", id_val)
+
+        exact_match = [u for u in users if u.username.lower() == id_val.lower()]
+        if exact_match:
+            user = exact_match[0]
+        else:
+            otp_match = [u for u in users if u.reset_token and u.reset_token.strip() == req.reset_code.strip()]
+            user = otp_match[0] if otp_match else users[0]
 
         if len(req.new_password) < 6:
             raise BusinessException("Mật khẩu mới phải có độ dài tối thiểu 6 ký tự.")

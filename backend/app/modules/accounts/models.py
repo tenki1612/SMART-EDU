@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, Boolean, Integer, DateTime, Enum as SQLEnum
+from sqlalchemy import Column, String, Boolean, Integer, DateTime, Enum as SQLEnum, UniqueConstraint
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 from app.common.base_model import TimestampMixin
@@ -7,10 +7,13 @@ from app.core.permissions import RoleEnum
 
 class User(Base, TimestampMixin):
     __tablename__ = "NGUOI_DUNG"
+    __table_args__ = (
+        UniqueConstraint("Email", "VaiTro", name="uq_nguoidung_email_vaitro"),
+    )
 
     id = Column("MaNguoiDung", Integer, primary_key=True, index=True, autoincrement=True)
     username = Column("TenDangNhap", String(50), unique=True, index=True, nullable=False)
-    email = Column("Email", String(100), unique=True, index=True, nullable=False)
+    email = Column("Email", String(100), index=True, nullable=False)
     full_name = Column("HoTen", String(100), nullable=False)
     hashed_password = Column("MatKhau", String(255), nullable=False)
     role = Column("VaiTro", SQLEnum(RoleEnum), default=RoleEnum.STUDENT, nullable=False)

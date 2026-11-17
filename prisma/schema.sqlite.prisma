@@ -15,7 +15,7 @@ datasource db {
 model User {
   id                    Int       @id @default(autoincrement())
   username              String    @unique
-  email                 String    @unique
+  email                 String
   fullName              String    @map("full_name")
   hashedPassword        String    @map("hashed_password")
   role                  String    @default("STUDENT") // ADMIN, ACADEMIC_STAFF, TEACHER, STUDENT, PARENT
@@ -38,6 +38,7 @@ model User {
   reviewedEnrollments   EnrollmentRequest[] @relation("ReviewedByUser")
   confirmedProgressions CourseProgression[] @relation("ConfirmedByUser")
 
+  @@unique([email, role])
   @@map("users")
 }
 

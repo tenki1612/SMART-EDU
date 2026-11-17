@@ -64,7 +64,7 @@ export const Sidebar = ({
       items: [
         { id: 'students', label: 'Hồ sơ Học viên', icon: Users, roles: ['ADMIN', 'ACADEMIC_STAFF'] },
         { id: 'teachers', label: 'Hồ sơ Giáo viên', icon: GraduationCap, roles: ['ADMIN', 'ACADEMIC_STAFF'] },
-        { id: 'accounts', label: 'Quản lý Tài khoản', icon: ShieldAlert, roles: ['ADMIN'] },
+        { id: 'accounts', label: 'Quản lý Tài khoản', icon: ShieldAlert, roles: ['ADMIN', 'ACADEMIC_STAFF'] },
       ],
     },
   ];

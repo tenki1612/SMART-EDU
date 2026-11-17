@@ -145,7 +145,7 @@ model LOP_HOC {
 model NGUOI_DUNG {
   MaNguoiDung         Int                   @id @default(autoincrement())
   TenDangNhap         String                @unique(map: "ix_NGUOI_DUNG_TenDangNhap") @db.VarChar(50)
-  Email               String                @unique(map: "ix_NGUOI_DUNG_Email") @db.VarChar(100)
+  Email               String                @db.VarChar(100)
   HoTen               String                @db.VarChar(100)
   MatKhau             String                @db.VarChar(255)
   VaiTro              roleenum
@@ -165,6 +165,8 @@ model NGUOI_DUNG {
   TIEN_TRINH_KHOA_HOC TIEN_TRINH_KHOA_HOC[]
   YEU_CAU_DANG_KY     YEU_CAU_DANG_KY[]
 
+  @@unique([Email, VaiTro], map: "ix_NGUOI_DUNG_Email_VaiTro")
+  @@index([Email], map: "ix_NGUOI_DUNG_Email")
   @@index([MaNguoiDung], map: "ix_NGUOI_DUNG_MaNguoiDung")
 }
 
