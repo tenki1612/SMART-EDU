@@ -330,7 +330,7 @@ export const ClassesView = () => {
 
       {/* KPI Metric Overview */}
       {user?.role !== 'STUDENT' && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
+        <div className={`grid gap-3.5 sm:gap-4 ${isTeacher ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-2 lg:grid-cols-4'}`}>
         <div className="bg-white p-4 sm:p-5 rounded-3xl border border-slate-200/90 shadow-2xs hover:border-indigo-200 hover:-translate-y-0.5 transition-all">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
@@ -346,37 +346,45 @@ export const ClassesView = () => {
           </div>
         </div>
 
-        <div className="bg-white p-4 sm:p-5 rounded-3xl border border-slate-200/90 shadow-2xs hover:border-emerald-200 hover:-translate-y-0.5 transition-all">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Đang mở tuyển sinh</span>
-            <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-              <UserCheck className="w-4 h-4" />
+        {!isTeacher && (
+          <div className="bg-white p-4 sm:p-5 rounded-3xl border border-slate-200/90 shadow-2xs hover:border-emerald-200 hover:-translate-y-0.5 transition-all">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Đang mở tuyển sinh</span>
+              <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                <UserCheck className="w-4 h-4" />
+              </div>
             </div>
+            <div className="text-2xl font-black text-emerald-600 tabular-nums">{stats.openEnroll}</div>
+            <div className="text-[11px] text-emerald-700/80 mt-1 font-medium">Sẵn sàng nhận hồ sơ</div>
           </div>
-          <div className="text-2xl font-black text-emerald-600 tabular-nums">{stats.openEnroll}</div>
-          <div className="text-[11px] text-emerald-700/80 mt-1 font-medium">Sẵn sàng nhận hồ sơ</div>
-        </div>
+        )}
 
-        <div className="bg-white p-4 sm:p-5 rounded-3xl border border-slate-200/90 shadow-2xs hover:border-sky-200 hover:-translate-y-0.5 transition-all">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Đang diễn ra</span>
-            <div className="w-8 h-8 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center">
-              <BookOpen className="w-4 h-4" />
+        {!isTeacher && (
+          <div className="bg-white p-4 sm:p-5 rounded-3xl border border-slate-200/90 shadow-2xs hover:border-sky-200 hover:-translate-y-0.5 transition-all">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Đang diễn ra</span>
+              <div className="w-8 h-8 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center">
+                <BookOpen className="w-4 h-4" />
+              </div>
             </div>
+            <div className="text-2xl font-black text-sky-600 tabular-nums">{stats.inProgress}</div>
+            <div className="text-[11px] text-sky-700/80 mt-1 font-medium">Lớp đang vận hành</div>
           </div>
-          <div className="text-2xl font-black text-sky-600 tabular-nums">{stats.inProgress}</div>
-          <div className="text-[11px] text-sky-700/80 mt-1 font-medium">Lớp đang vận hành</div>
-        </div>
+        )}
 
         <div className="bg-white p-4 sm:p-5 rounded-3xl border border-slate-200/90 shadow-2xs hover:border-purple-200 hover:-translate-y-0.5 transition-all">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Tổng học viên</span>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              {isTeacher ? 'Tổng học viên đang dạy' : 'Tổng học viên'}
+            </span>
             <div className="w-8 h-8 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
               <Users className="w-4 h-4" />
             </div>
           </div>
           <div className="text-2xl font-black text-purple-600 tabular-nums">{stats.totalStudents}</div>
-          <div className="text-[11px] text-purple-700/80 mt-1 font-medium">Học viên đang theo học</div>
+          <div className="text-[11px] text-purple-700/80 mt-1 font-medium">
+            {isTeacher ? 'Số lượng học viên các lớp phụ trách' : 'Học viên đang theo học'}
+          </div>
         </div>
       </div>
       )}
@@ -411,6 +419,12 @@ export const ClassesView = () => {
             ? [
                 { id: '', label: 'Tất cả' },
                 { id: 'IN_PROGRESS', label: 'Đang học' },
+                { id: 'COMPLETED', label: 'Đã xong' },
+              ]
+            : isTeacher
+            ? [
+                { id: '', label: 'Tất cả lớp' },
+                { id: 'IN_PROGRESS', label: 'Đang dạy' },
                 { id: 'COMPLETED', label: 'Đã xong' },
               ]
             : [
