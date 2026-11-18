@@ -970,28 +970,10 @@ export const ProgressionParentView = () => {
 
                         <td className="p-4 pr-5 text-right">
                           <div className="space-x-1.5 inline-flex items-center justify-end">
-                            {!r.is_confirmed ? (
-                              <>
-                                <button
-                                  type="button"
-                                  onClick={() => handleApproveProgression(r.id)}
-                                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-xs cursor-pointer active:scale-95 text-xs"
-                                >
-                                  Phê duyệt chuyển khóa
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setRejectingProgressionId(r.id)}
-                                  className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold rounded-xl cursor-pointer active:scale-95 text-xs"
-                                >
-                                  Từ chối
-                                </button>
-                              </>
-                            ) : (
-                              <span className="text-emerald-700 font-bold text-xs bg-emerald-50 px-2.5 py-1 rounded-xl border border-emerald-200">
-                                Đã phê duyệt
-                              </span>
-                            )}
+                            <span className="text-emerald-700 font-bold text-xs bg-emerald-50 px-2.5 py-1 rounded-xl border border-emerald-200 inline-flex items-center gap-1">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>Xác nhận trực tiếp</span>
+                            </span>
                           </div>
                         </td>
                       </tr>
@@ -1405,70 +1387,6 @@ export const ProgressionParentView = () => {
           document.body
         )}
 
-      {/* ========================================================================= */}
-      {/* MODAL 3: STAFF REJECTS PROGRESSION REQUEST                                 */}
-      {/* ========================================================================= */}
-      {rejectingProgressionId &&
-        createPortal(
-          <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
-            <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl border border-slate-200 relative overflow-hidden">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-9 h-9 rounded-2xl bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-600">
-                    <XCircle className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-black text-slate-900">
-                      Từ Chối Đơn Chuyển Khóa #{rejectingProgressionId}
-                    </h3>
-                    <span className="text-xs text-slate-400">Gửi thông báo lý do đến học viên</span>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setRejectingProgressionId(null)}
-                  className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 cursor-pointer transition"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <form onSubmit={handleRejectProgression} className="space-y-4 text-xs">
-                <div>
-                  <label className="font-bold text-slate-700 block mb-1.5">
-                    Lý do từ chối: <span className="text-rose-500">*</span>
-                  </label>
-                  <textarea
-                    rows={3}
-                    required
-                    value={rejectionReason}
-                    onChange={(e) => setRejectionReason(e.target.value)}
-                    placeholder="Ví dụ: Học viên chưa hoàn thành đạt chuẩn đầu ra khóa tiên quyết..."
-                    className="w-full border border-slate-200 p-3 rounded-2xl bg-slate-50 focus:bg-white outline-hidden focus:border-rose-600 focus:ring-2 focus:ring-rose-100 transition resize-none font-medium text-xs"
-                  />
-                </div>
-
-                <div className="flex items-center gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setRejectingProgressionId(null)}
-                    className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200/80 text-slate-700 font-bold rounded-xl transition cursor-pointer text-xs"
-                  >
-                    Xem lại
-                  </button>
-                  <button
-                    type="submit"
-                    className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-bold rounded-xl shadow-md shadow-rose-200 transition cursor-pointer text-xs flex items-center justify-center gap-1.5"
-                  >
-                    <XCircle className="w-3.5 h-3.5" />
-                    <span>Xác nhận từ chối</span>
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>,
-          document.body
-        )}
     </div>
   );
 };

@@ -53,6 +53,19 @@ export const GradesView = () => {
   const [selectedWardId, setSelectedWardId] = useState(null);
   const [wardGrades, setWardGrades] = useState([]);
 
+  // Lock and audit states
+  const [lockInfo, setLockInfo] = useState({
+    is_locked: false,
+    is_manually_unlocked: false,
+    lock_reason: '',
+    can_edit: true,
+  });
+  const [showLockModal, setShowLockModal] = useState(false);
+  const [showUnlockModal, setShowUnlockModal] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [lockReason, setLockReason] = useState('');
+  const [lockHistory, setLockHistory] = useState([]);
+
   // Modal: Thêm học viên vào bảng điểm
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [addForm, setAddForm] = useState({
@@ -130,8 +143,12 @@ export const GradesView = () => {
   const loadGradingSheet = async (classId) => {
     if (!classId) return;
     try {
-      const res = await gradesApi.getGradingSheet(classId);
-      setGradingSheet(res.data || []);
+      const [sheetRes, statusRes] = await Promise.all([
+        gradesApi.getGradingSheet(classId),
+        gradesApi.getLockStatus(classId).catch(() => ({ data: { is_locked: false } }))
+      ]);
+      setGradingSheet(sheetRes.data || []);
+      setLockInfo(statusRes.data || { is_locked: false });
     } catch (e) {
       console.error(e);
       toast.error('Lỗi tải bảng điểm lớp: ' + e.message);
@@ -164,7 +181,7 @@ export const GradesView = () => {
     }
   }, [selectedClassId]);
 
-  const isSheetLocked = gradingSheet.length > 0 && gradingSheet.every((s) => s.is_confirmed);
+  const isSheetLocked = Boolean(lockInfo?.is_locked) || (gradingSheet.length > 0 && gradingSheet.every((s) => s.is_confirmed));
 
   // Score change handler for Teachers
   const handleScoreChange = (studentId, field, val) => {
@@ -215,18 +232,17 @@ export const GradesView = () => {
   };
 
   // Admin & Staff officially confirm/lock grades
-  const handleConfirmGrades = async () => {
-    const isConfirmed = await confirm({
-      title: 'Xác nhận khóa bảng điểm chính thức',
-      message: 'Bạn có chắc chắn muốn xác nhận kết quả học tập chính thức? Bảng điểm sẽ được khóa an toàn, giáo viên không thể chỉnh sửa điểm sau khi đã xác nhận.',
-      confirmText: 'Lưu & Khóa điểm',
-      cancelText: 'Hủy bỏ',
-      type: 'warning',
-    });
-    if (!isConfirmed) return;
+  const handleOpenLockModal = () => {
+    setLockReason('');
+    setShowLockModal(true);
+  };
+
+  const handleConfirmGradesSubmit = async (e) => {
+    e.preventDefault();
     try {
-      await gradesApi.confirmGrades(selectedClassId);
-      toast.success('Đã lưu & xác nhận bảng điểm chính thức thành công!');
+      await gradesApi.confirmGrades(selectedClassId, lockReason);
+      toast.success('Đã khóa sổ bảng điểm chính thức thành công!');
+      setShowLockModal(false);
       loadGradingSheet(selectedClassId);
     } catch (e) {
       toast.error(e.message);
@@ -234,21 +250,30 @@ export const GradesView = () => {
   };
 
   // Unlock grades
-  const handleUnlockGrades = async () => {
-    const isConfirmed = await confirm({
-      title: 'Mở khóa bảng điểm',
-      message: 'Mở khóa bảng điểm để giảng viên phụ trách có thể cập nhật hoặc điều chỉnh điểm số học viên?',
-      confirmText: 'Mở khóa',
-      cancelText: 'Giữ khóa',
-      type: 'info',
-    });
-    if (!isConfirmed) return;
+  const handleOpenUnlockModal = () => {
+    setLockReason('');
+    setShowUnlockModal(true);
+  };
+
+  const handleUnlockGradesSubmit = async (e) => {
+    e.preventDefault();
     try {
-      await gradesApi.unlockGrades(selectedClassId);
+      await gradesApi.unlockGrades(selectedClassId, lockReason);
       toast.success('Đã mở khóa bảng điểm thành công!');
+      setShowUnlockModal(false);
       loadGradingSheet(selectedClassId);
     } catch (e) {
       toast.error(e.message);
+    }
+  };
+
+  const handleViewLockHistory = async () => {
+    try {
+      const res = await gradesApi.getLockHistory(selectedClassId);
+      setLockHistory(res.data || []);
+      setShowHistoryModal(true);
+    } catch (e) {
+      toast.error('Lỗi tải lịch sử khóa điểm: ' + e.message);
     }
   };
 
@@ -569,6 +594,15 @@ export const GradesView = () => {
       {/* Header Slot Action Buttons */}
       {headerSlot && (isTeacher || isAdminOrStaff) && createPortal(
         <div className="flex items-center gap-2">
+          {isAdminOrStaff && selectedClassId && (
+            <button
+              type="button"
+              onClick={handleViewLockHistory}
+              className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-xl text-xs font-bold shadow-2xs transition cursor-pointer"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-indigo-600" /> <span>Lịch sử khóa điểm</span>
+            </button>
+          )}
           {isTeacher && !isSheetLocked && (
             <button
               type="button"
@@ -581,16 +615,16 @@ export const GradesView = () => {
           {isAdminOrStaff && !isSheetLocked && gradingSheet.length > 0 && (
             <button
               type="button"
-              onClick={handleConfirmGrades}
+              onClick={handleOpenLockModal}
               className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow-xs shadow-emerald-200 transition cursor-pointer"
             >
-              <CheckCircle2 className="w-3.5 h-3.5" /> <span>Khóa điểm</span>
+              <Lock className="w-3.5 h-3.5" /> <span>Khóa điểm</span>
             </button>
           )}
           {isAdminOrStaff && isSheetLocked && (
             <button
               type="button"
-              onClick={handleUnlockGrades}
+              onClick={handleOpenUnlockModal}
               className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow-xs shadow-amber-200 transition cursor-pointer"
             >
               <Unlock className="w-3.5 h-3.5" /> <span>Mở khóa điểm</span>
@@ -651,7 +685,7 @@ export const GradesView = () => {
           <div>
             <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Trạng thái sổ điểm</span>
             <span className={`text-base font-black mt-1.5 block ${isSheetLocked ? 'text-amber-700' : 'text-emerald-700'}`}>
-              {isSheetLocked ? 'Đã khóa sổ' : 'Đang mở nhập'}
+              {isSheetLocked ? 'Đã khóa sổ' : lockInfo?.is_manually_unlocked ? 'Đang mở (Thủ công)' : 'Đang mở nhập'}
             </span>
           </div>
           <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isSheetLocked ? 'bg-amber-50 text-amber-600 border border-amber-200/60' : 'bg-emerald-50 text-emerald-600 border border-emerald-200/60'}`}>
@@ -687,13 +721,43 @@ export const GradesView = () => {
         </div>
       </div>
 
-      {/* Banner cảnh báo khi bảng điểm đã khóa sổ đối với Giảng viên */}
-      {isSheetLocked && isTeacher && (
-        <div className="bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded-2xl text-xs font-semibold flex items-center gap-2.5 shadow-2xs">
-          <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-          <span>
-            Bảng điểm của lớp học này đã được Học vụ/Admin xác nhận và khóa sổ chính thức. Giảng viên chỉ có quyền xem kết quả, không thể mở khóa hoặc sửa điểm. Vui lòng liên hệ Phòng Học vụ nếu cần hỗ trợ điều chỉnh điểm.
-          </span>
+      {/* Banner trạng thái khóa điểm */}
+      {isSheetLocked && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded-2xl text-xs font-semibold flex items-center justify-between gap-2.5 shadow-2xs">
+          <div className="flex items-center gap-2.5">
+            <Lock className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>
+              {lockInfo?.lock_reason || 'Bảng điểm của lớp học này đã bị khóa (lớp học đã kết thúc hoặc được khóa sổ chính thức). Giảng viên không có quyền chỉnh sửa điểm.'}
+            </span>
+          </div>
+          {isAdminOrStaff && (
+            <button
+              type="button"
+              onClick={handleOpenUnlockModal}
+              className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shrink-0 cursor-pointer"
+            >
+              Mở khóa điểm
+            </button>
+          )}
+        </div>
+      )}
+      {!isSheetLocked && lockInfo?.is_manually_unlocked && (
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 px-4 py-3 rounded-2xl text-xs font-semibold flex items-center justify-between gap-2.5 shadow-2xs">
+          <div className="flex items-center gap-2.5">
+            <Unlock className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>
+              Bảng điểm đang được mở khóa thủ công bởi Quản trị viên/Học vụ cho giảng viên chỉnh sửa điểm.
+            </span>
+          </div>
+          {isAdminOrStaff && (
+            <button
+              type="button"
+              onClick={handleOpenLockModal}
+              className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shrink-0 cursor-pointer"
+            >
+              Khóa lại điểm
+            </button>
+          )}
         </div>
       )}
 
@@ -943,6 +1007,168 @@ export const GradesView = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ================= MODAL: KHÓA BẢNG ĐIỂM ================= */}
+      {showLockModal && createPortal(
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl border border-slate-200">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+              <div className="flex items-center gap-2">
+                <Lock className="w-5 h-5 text-emerald-600" />
+                <h3 className="text-base font-black text-slate-900">Khóa Bảng Điểm Lớp Học</h3>
+              </div>
+              <button
+                onClick={() => setShowLockModal(false)}
+                className="w-8 h-8 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 flex items-center justify-center font-bold text-sm cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+            <form onSubmit={handleConfirmGradesSubmit} className="space-y-4 text-xs">
+              <p className="text-slate-600">
+                Sau khi khóa, giảng viên sẽ không thể thêm, sửa hoặc xóa điểm số của lớp này nữa.
+              </p>
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">Lý do khóa sổ điểm:</label>
+                <textarea
+                  rows={3}
+                  value={lockReason}
+                  onChange={(e) => setLockReason(e.target.value)}
+                  placeholder="Ví dụ: Đã hoàn tất nhập điểm và duyệt điểm cuối kỳ..."
+                  className="w-full border border-slate-300 p-2.5 rounded-xl outline-hidden focus:border-emerald-600 text-xs"
+                />
+              </div>
+              <div className="flex justify-end gap-2.5 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowLockModal(false)}
+                  className="px-4 py-2 border border-slate-300 rounded-xl font-bold text-slate-600 hover:bg-slate-50 cursor-pointer"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 shadow-sm shadow-emerald-200 cursor-pointer"
+                >
+                  Xác nhận khóa điểm
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ================= MODAL: MỞ KHÓA BẢNG ĐIỂM ================= */}
+      {showUnlockModal && createPortal(
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl border border-slate-200">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+              <div className="flex items-center gap-2">
+                <Unlock className="w-5 h-5 text-amber-600" />
+                <h3 className="text-base font-black text-slate-900">Mở Khóa Bảng Điểm</h3>
+              </div>
+              <button
+                onClick={() => setShowUnlockModal(false)}
+                className="w-8 h-8 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 flex items-center justify-center font-bold text-sm cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+            <form onSubmit={handleUnlockGradesSubmit} className="space-y-4 text-xs">
+              <p className="text-slate-600">
+                Mở khóa bảng điểm để giảng viên phụ trách có thể sửa đổi điểm trong trường hợp nhập nhầm. Toàn bộ thao tác sẽ được lưu vào lịch sử kiểm toán.
+              </p>
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">Lý do mở khóa điểm (bắt buộc):</label>
+                <textarea
+                  required
+                  rows={3}
+                  value={lockReason}
+                  onChange={(e) => setLockReason(e.target.value)}
+                  placeholder="Ví dụ: Giảng viên báo nhập nhầm điểm cuối kỳ của học viên..."
+                  className="w-full border border-slate-300 p-2.5 rounded-xl outline-hidden focus:border-amber-600 text-xs"
+                />
+              </div>
+              <div className="flex justify-end gap-2.5 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowUnlockModal(false)}
+                  className="px-4 py-2 border border-slate-300 rounded-xl font-bold text-slate-600 hover:bg-slate-50 cursor-pointer"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-amber-600 text-white rounded-xl font-bold hover:bg-amber-700 shadow-sm shadow-amber-200 cursor-pointer"
+                >
+                  Xác nhận mở khóa
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ================= MODAL: LỊCH SỬ KHÓA / MỞ KHÓA ================= */}
+      {showHistoryModal && createPortal(
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-7 shadow-2xl border border-slate-200 max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4 shrink-0">
+              <div className="flex items-center gap-2">
+                <FileSpreadsheet className="w-5 h-5 text-indigo-600" />
+                <h3 className="text-base font-black text-slate-900">Lịch Sử Khóa / Mở Khóa Điểm</h3>
+              </div>
+              <button
+                onClick={() => setShowHistoryModal(false)}
+                className="w-8 h-8 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 flex items-center justify-center font-bold text-sm cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="overflow-y-auto flex-1 text-xs">
+              {lockHistory.length === 0 ? (
+                <div className="p-8 text-center text-slate-400">Chưa có lịch sử khóa hoặc mở khóa điểm cho lớp này.</div>
+              ) : (
+                <div className="space-y-3">
+                  {lockHistory.map((h) => (
+                    <div key={h.id} className="p-3.5 rounded-2xl border border-slate-100 bg-slate-50/60 flex items-start justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                            h.action === 'LOCK'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : h.action === 'UNLOCK'
+                              ? 'bg-amber-100 text-amber-800'
+                              : 'bg-indigo-100 text-indigo-800'
+                          }`}>
+                            {h.action === 'LOCK' ? 'KHÓA ĐIỂM' : h.action === 'UNLOCK' ? 'MỞ KHÓA' : 'TỰ ĐỘNG KHÓA'}
+                          </span>
+                          <span className="font-bold text-slate-800">{h.performer_name || 'Hệ thống'}</span>
+                        </div>
+                        <p className="text-slate-600 mt-1 font-medium">{h.reason || 'Không có ghi chú'}</p>
+                      </div>
+                      <span className="text-[11px] text-slate-400 shrink-0 font-mono">
+                        {new Date(h.performed_at).toLocaleString('vi-VN')}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="pt-3 border-t border-slate-100 mt-4 flex justify-end shrink-0">
+              <button
+                onClick={() => setShowHistoryModal(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl cursor-pointer"
+              >
+                Đóng
+              </button>
+            </div>
           </div>
         </div>,
         document.body

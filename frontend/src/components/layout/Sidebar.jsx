@@ -16,7 +16,8 @@ import {
   ArrowUpRight,
   UserCheck,
   PanelLeftClose,
-  PanelLeftOpen
+  PanelLeftOpen,
+  MessageSquare
 } from 'lucide-react';
 
 export const Sidebar = ({
@@ -42,7 +43,7 @@ export const Sidebar = ({
       items: [
         { id: 'courses', label: 'Khóa học', icon: BookOpen, roles: ['ADMIN', 'ACADEMIC_STAFF'] },
         { id: 'classes', label: 'Lớp học', icon: School, roles: ['ADMIN', 'ACADEMIC_STAFF', 'TEACHER', 'STUDENT'] },
-        { id: 'classrooms', label: 'Phòng học & Cơ sở', icon: DoorOpen, roles: ['ADMIN', 'ACADEMIC_STAFF', 'TEACHER'] },
+        { id: 'classrooms', label: 'Phòng học & Cơ sở', icon: DoorOpen, roles: ['ADMIN', 'ACADEMIC_STAFF'] },
       ],
     },
     {
@@ -57,6 +58,12 @@ export const Sidebar = ({
       items: [
         { id: 'grades', label: 'Sổ điểm & Kết quả', icon: FileSpreadsheet, roles: ['ADMIN', 'ACADEMIC_STAFF', 'TEACHER', 'STUDENT', 'PARENT'] },
         { id: 'progression', label: 'Chuyển khóa học', icon: ArrowUpRight, roles: ['ADMIN', 'ACADEMIC_STAFF', 'STUDENT', 'PARENT'] },
+      ],
+    },
+    {
+      groupName: 'GIAO TIẾP & ĐƠN TỪ',
+      items: [
+        { id: 'tickets', label: 'Đơn từ & Khiếu nại', icon: MessageSquare, roles: ['ADMIN', 'ACADEMIC_STAFF', 'TEACHER', 'STUDENT', 'PARENT'] },
       ],
     },
     {

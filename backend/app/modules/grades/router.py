@@ -1,12 +1,14 @@
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.permissions import require_roles, RoleEnum, get_current_user_payload
 from app.common.response import ApiResponse
 from app.modules.students.models import Student
+from app.modules.classes.models import Class
 from app.modules.grades.schemas import (
-    BatchGradeInputRequest, AddStudentGradeRequest, ClassGradingSheetStudent, GradeRecordResponse
+    BatchGradeInputRequest, AddStudentGradeRequest, ClassGradingSheetStudent, GradeRecordResponse,
+    GradeLockUnlockRequest, GradeLockHistoryResponse
 )
 from app.modules.grades.service import GradeService
 
@@ -51,23 +53,62 @@ def save_grades(
     GradeService.save_grades(db, data)
     return ApiResponse(data=True, message="Lưu điểm và tổng hợp kết quả học tập thành công")
 
-@router.patch("/classes/{class_id}/confirm", response_model=ApiResponse[bool], summary="FR-76 & FR-77: Quản trị viên & Học vụ lưu/xác nhận kết quả học tập chính thức")
+@router.patch("/classes/{class_id}/confirm", response_model=ApiResponse[bool], summary="FR-76 & FR-77: Quản trị viên & Học vụ khóa sổ kết quả học tập")
+@router.post("/classes/{class_id}/confirm", response_model=ApiResponse[bool], summary="Khóa sổ kết quả học tập (POST alias)")
 def confirm_grades(
     class_id: int,
+    data: Optional[GradeLockUnlockRequest] = None,
+    payload: dict = Depends(get_current_user_payload),
     db: Session = Depends(get_db),
     _ = Depends(require_roles([RoleEnum.ADMIN, RoleEnum.ACADEMIC_STAFF]))
 ):
-    GradeService.confirm_grades(db, class_id)
-    return ApiResponse(data=True, message="Xác nhận kết quả học tập lớp học thành công")
+    user_id = int(payload["sub"])
+    reason = data.reason if data else None
+    GradeService.confirm_grades(db, class_id, user_id=user_id, reason=reason)
+    return ApiResponse(data=True, message="Đã khóa sổ kết quả học tập lớp học thành công")
 
 @router.patch("/classes/{class_id}/unlock", response_model=ApiResponse[bool], summary="Mở khóa bảng điểm để giáo viên chỉnh sửa")
+@router.post("/classes/{class_id}/unlock", response_model=ApiResponse[bool], summary="Mở khóa bảng điểm (POST alias)")
 def unlock_grades(
     class_id: int,
+    data: Optional[GradeLockUnlockRequest] = None,
+    payload: dict = Depends(get_current_user_payload),
     db: Session = Depends(get_db),
     _ = Depends(require_roles([RoleEnum.ADMIN, RoleEnum.ACADEMIC_STAFF]))
 ):
-    GradeService.unlock_grades(db, class_id)
+    user_id = int(payload["sub"])
+    reason = data.reason if data else None
+    GradeService.unlock_grades(db, class_id, user_id=user_id, reason=reason)
     return ApiResponse(data=True, message="Đã mở khóa bảng điểm lớp học")
+
+@router.get("/classes/{class_id}/lock-history", response_model=ApiResponse[List[GradeLockHistoryResponse]], summary="Lịch sử khóa / mở khóa điểm của lớp")
+def get_grade_lock_history(
+    class_id: int,
+    db: Session = Depends(get_db),
+    _ = Depends(require_roles([RoleEnum.ADMIN, RoleEnum.ACADEMIC_STAFF, RoleEnum.TEACHER]))
+):
+    history = GradeService.get_lock_history(db, class_id)
+    return ApiResponse(data=history, message="Lịch sử khóa / mở khóa điểm của lớp")
+
+@router.get("/classes/{class_id}/lock-status", response_model=ApiResponse[dict], summary="Kiểm tra trạng thái khóa điểm của lớp")
+def get_grade_lock_status(
+    class_id: int,
+    db: Session = Depends(get_db),
+    payload: dict = Depends(get_current_user_payload)
+):
+    cls = db.query(Class).filter(Class.id == class_id, Class.is_deleted == False).first()
+    if not cls:
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy lớp học ID {class_id}")
+    is_locked, reason = GradeService.check_and_update_class_grade_lock(db, cls)
+    user_role = payload.get("role")
+    can_edit = (not is_locked) and (user_role in [RoleEnum.TEACHER.value, RoleEnum.ADMIN.value, RoleEnum.ACADEMIC_STAFF.value])
+    return ApiResponse(data={
+        "class_id": class_id,
+        "is_locked": is_locked,
+        "is_manually_unlocked": cls.is_grade_unlocked,
+        "lock_reason": reason,
+        "can_edit": can_edit
+    }, message="Trạng thái khóa sổ bảng điểm")
 
 @router.post("/classes/{class_id}/students", response_model=ApiResponse[ClassGradingSheetStudent], summary="Thêm học viên vào bảng điểm lớp")
 def add_student_to_grading_sheet(

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, ForeignKey, Date, DateTime
+from sqlalchemy import Column, String, Integer, ForeignKey, Date, DateTime, Boolean
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 from app.core.database import Base
@@ -13,9 +13,11 @@ class Class(Base, TimestampMixin):
     teacher_id = Column("MaGiangVien", Integer, ForeignKey("GIANG_VIEN.MaGiangVien"), nullable=True) # Gán giáo viên cho lớp (FR-39)
     max_capacity = Column("SiSoToiDa", Integer, default=25) # Sức chứa / Sĩ số tối đa (FR-37)
     current_enrolled = Column("SiSoHienTai", Integer, default=0) # Sĩ số hiện tại
-    start_date = Column("NgayBatDau", Date, nullable=True)
-    end_date = Column("NgayKetThuc", Date, nullable=True)
+    opening_date = Column("NgayMoLop", Date, nullable=True) # Thời gian mở lớp (Opening date, OpeningTime >= CurrentDateTime)
+    start_date = Column("NgayBatDau", Date, nullable=True) # Thời gian bắt đầu học thực tế của lớp
+    end_date = Column("NgayKetThuc", Date, nullable=True) # Thời gian kết thúc lớp học
     status = Column("TrangThai", String(50), default="OPEN_FOR_ENROLLMENT") # PLANNED, OPEN_FOR_ENROLLMENT, IN_PROGRESS, COMPLETED, CANCELLED
+    is_grade_unlocked = Column("MoKhoaDiemThuCong", Boolean, default=False) # Mở khóa điểm thủ công bởi Admin/Staff sau khi lớp kết thúc
 
     # Relationships
     course = relationship("Course", back_populates="classes")

@@ -33,7 +33,7 @@ def list_classrooms(
     q: Optional[str] = Query(None, description="Tìm theo tên phòng, tòa nhà"),
     status: Optional[str] = Query(None, description="Lọc: AVAILABLE, MAINTENANCE, OCCUPIED"),
     db: Session = Depends(get_db),
-    payload: dict = Depends(get_current_user_payload)
+    _ = Depends(require_roles([RoleEnum.ADMIN, RoleEnum.ACADEMIC_STAFF]))
 ):
     rooms = ClassroomService.list_classrooms(db, q=q, status=status)
     return ApiResponse(data=rooms, message="Danh sách phòng học")
@@ -42,7 +42,7 @@ def list_classrooms(
 def get_classroom_detail(
     room_id: int,
     db: Session = Depends(get_db),
-    payload: dict = Depends(get_current_user_payload)
+    _ = Depends(require_roles([RoleEnum.ADMIN, RoleEnum.ACADEMIC_STAFF]))
 ):
     room = ClassroomService.get_classroom_detail(db, room_id)
     return ApiResponse(data=room, message="Chi tiết phòng học")

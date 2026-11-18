@@ -17,6 +17,7 @@ import { ProgressionParentView } from './views/ProgressionParentView';
 import { StudentsView } from './views/StudentsView';
 import { TeachersView } from './views/TeachersView';
 import { AccountsView } from './views/AccountsView';
+import { TicketsView } from './views/TicketsView';
 import {
   LayoutDashboard,
   BookOpen,
@@ -33,7 +34,8 @@ import {
   ChevronRight,
   Home,
   PanelLeftClose,
-  PanelLeftOpen
+  PanelLeftOpen,
+  MessageSquare
 } from 'lucide-react';
 
 const tabMetadata = {
@@ -45,6 +47,7 @@ const tabMetadata = {
   enrollments: { group: 'Lịch học & Tuyển sinh', label: 'Đăng ký lớp học', icon: UserCheck },
   grades: { group: 'Đánh giá & Tiến độ', label: 'Sổ điểm & Kết quả', icon: FileSpreadsheet },
   progression: { group: 'Đánh giá & Tiến độ', label: 'Chuyển khóa học', icon: ArrowUpRight },
+  tickets: { group: 'Giao tiếp & Đơn từ', label: 'Đơn từ & Khiếu nại', icon: MessageSquare },
   students: { group: 'Quản trị & Nhân sự', label: 'Hồ sơ Học viên', icon: Users },
   teachers: { group: 'Quản trị & Nhân sự', label: 'Hồ sơ Giáo viên', icon: GraduationCap },
   accounts: { group: 'Quản trị & Nhân sự', label: 'Quản lý Tài khoản', icon: ShieldAlert },
@@ -54,14 +57,15 @@ const tabRolePermissions = {
   dashboard: ['ADMIN', 'ACADEMIC_STAFF', 'TEACHER', 'STUDENT', 'PARENT'],
   courses: ['ADMIN', 'ACADEMIC_STAFF'],
   classes: ['ADMIN', 'ACADEMIC_STAFF', 'TEACHER', 'STUDENT'],
-  classrooms: ['ADMIN', 'ACADEMIC_STAFF', 'TEACHER'],
+  classrooms: ['ADMIN', 'ACADEMIC_STAFF'],
   schedules: ['ADMIN', 'ACADEMIC_STAFF', 'TEACHER', 'STUDENT', 'PARENT'],
   enrollments: ['ADMIN', 'ACADEMIC_STAFF', 'STUDENT'],
   grades: ['ADMIN', 'ACADEMIC_STAFF', 'TEACHER', 'STUDENT', 'PARENT'],
   progression: ['ADMIN', 'ACADEMIC_STAFF', 'STUDENT', 'PARENT'],
+  tickets: ['ADMIN', 'ACADEMIC_STAFF', 'TEACHER', 'STUDENT', 'PARENT'],
   students: ['ADMIN', 'ACADEMIC_STAFF'],
   teachers: ['ADMIN', 'ACADEMIC_STAFF'],
-  accounts: ['ADMIN'],
+  accounts: ['ADMIN', 'ACADEMIC_STAFF'],
 };
 
 const isTabAllowedForRole = (tab, role) => {
@@ -195,6 +199,8 @@ const MainApp = () => {
         return <ProgressionParentView />;
       case 'grades':
         return <GradesView />;
+      case 'tickets':
+        return <TicketsView />;
       case 'students':
         return <StudentsView />;
       case 'teachers':

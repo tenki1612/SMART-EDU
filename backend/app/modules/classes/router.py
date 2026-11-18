@@ -5,7 +5,8 @@ from app.core.database import get_db
 from app.core.permissions import require_roles, RoleEnum, get_current_user_payload, get_optional_user_payload
 from app.common.response import ApiResponse
 from app.modules.classes.schemas import (
-    ClassCreate, ClassUpdate, ClassResponse, ClassRosterStudentItem, AddStudentToClassRequest
+    ClassCreate, ClassUpdate, ClassResponse, ClassRosterStudentItem, AddStudentToClassRequest,
+    ClassTransferRequest, ClassTransferTargetItem
 )
 from app.modules.classes.service import ClassService
 
@@ -153,4 +154,42 @@ def delete_class(
 ):
     ClassService.delete_class(db, class_id)
     return ApiResponse(data=True, message="Xóa lớp học thành công")
+
+@router.get("/{class_id}/transfer-targets", response_model=ApiResponse[List[ClassTransferTargetItem]], summary="Lấy danh sách các lớp học hợp lệ để chuyển sang")
+def get_transfer_targets(
+    class_id: int,
+    db: Session = Depends(get_db),
+    _ = Depends(require_roles([RoleEnum.ADMIN, RoleEnum.ACADEMIC_STAFF, RoleEnum.STUDENT]))
+):
+    targets = ClassService.get_transfer_targets(db, class_id)
+    return ApiResponse(data=targets, message="Danh sách các lớp học hợp lệ để chuyển lớp")
+
+@router.post("/transfer", response_model=ApiResponse[dict], summary="Thực hiện chuyển lớp cho học viên")
+def transfer_class(
+    data: ClassTransferRequest,
+    payload: dict = Depends(get_current_user_payload),
+    db: Session = Depends(get_db),
+    _ = Depends(require_roles([RoleEnum.ADMIN, RoleEnum.ACADEMIC_STAFF, RoleEnum.STUDENT]))
+):
+    user_id = int(payload["sub"])
+    role = payload.get("role")
+    student_id = data.student_id
+
+    if role == RoleEnum.STUDENT.value:
+        from app.modules.students.models import Student
+        student = db.query(Student).filter(Student.user_id == user_id, Student.is_deleted == False).first()
+        if not student:
+            raise HTTPException(status_code=404, detail="Không tìm thấy hồ sơ học viên")
+        student_id = student.id
+    elif not student_id:
+        raise HTTPException(status_code=400, detail="Vui lòng chỉ định student_id để chuyển lớp")
+
+    res = ClassService.transfer_class(
+        db=db,
+        current_class_id=data.current_class_id,
+        target_class_id=data.target_class_id,
+        student_id=student_id,
+        reason=data.reason
+    )
+    return ApiResponse(data=res, message="Chuyển lớp học thành công")
 

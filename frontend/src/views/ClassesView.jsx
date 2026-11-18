@@ -21,7 +21,9 @@ import {
   CheckCircle2,
   X,
   Layers,
-  ArrowRight
+  ArrowRight,
+  ArrowRightLeft,
+  AlertCircle
 } from 'lucide-react';
 
 export const ClassesView = () => {
@@ -49,7 +51,8 @@ export const ClassesView = () => {
     course_id: '',
     teacher_id: '',
     max_capacity: 25,
-    start_date: '',
+    opening_date: new Date().toISOString().split('T')[0],
+    start_date: new Date().toISOString().split('T')[0],
     end_date: '',
   });
 
@@ -59,10 +62,20 @@ export const ClassesView = () => {
   const [editForm, setEditForm] = useState({
     teacher_id: '',
     max_capacity: 25,
+    opening_date: '',
     start_date: '',
     end_date: '',
     status: 'OPEN_FOR_ENROLLMENT',
   });
+
+  // Transfer Class Modal (Requirement 3)
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [transferSourceClass, setTransferSourceClass] = useState(null);
+  const [transferTargets, setTransferTargets] = useState([]);
+  const [loadingTransferTargets, setLoadingTransferTargets] = useState(false);
+  const [selectedTargetId, setSelectedTargetId] = useState('');
+  const [transferReason, setTransferReason] = useState('');
+  const [transferSubmitting, setTransferSubmitting] = useState(false);
 
   const loadData = async () => {
     try {
@@ -135,12 +148,23 @@ export const ClassesView = () => {
       toast.warning('Vui lòng nhập đầy đủ mã lớp và chọn khóa học.');
       return;
     }
+    const today = new Date().toISOString().split('T')[0];
+    const opening = newClass.opening_date || newClass.start_date;
+    if (opening && opening < today) {
+      toast.error('Thời gian mở lớp không hợp lệ. Thời gian mở lớp không được nằm trong quá khứ.');
+      return;
+    }
+    if (newClass.start_date && opening && newClass.start_date < opening) {
+      toast.error('Thời gian bắt đầu học thực tế không được trước thời gian mở lớp.');
+      return;
+    }
     try {
       await classesApi.create({
         class_code: newClass.class_code.trim().toUpperCase(),
         course_id: Number(newClass.course_id),
         teacher_id: newClass.teacher_id ? Number(newClass.teacher_id) : null,
         max_capacity: Number(newClass.max_capacity) || 25,
+        opening_date: opening || null,
         start_date: newClass.start_date || null,
         end_date: newClass.end_date || null,
       });
@@ -151,7 +175,8 @@ export const ClassesView = () => {
         course_id: courses[0]?.id || '',
         teacher_id: '',
         max_capacity: 25,
-        start_date: '',
+        opening_date: new Date().toISOString().split('T')[0],
+        start_date: new Date().toISOString().split('T')[0],
         end_date: '',
       });
       loadData();
@@ -165,6 +190,7 @@ export const ClassesView = () => {
     setEditForm({
       teacher_id: cls.teacher_id || '',
       max_capacity: cls.max_capacity,
+      opening_date: cls.opening_date || cls.start_date || '',
       start_date: cls.start_date || '',
       end_date: cls.end_date || '',
       status: cls.status,
@@ -174,10 +200,20 @@ export const ClassesView = () => {
 
   const handleUpdateClass = async (e) => {
     e.preventDefault();
+    const today = new Date().toISOString().split('T')[0];
+    if (editForm.opening_date && editForm.opening_date < today) {
+      toast.error('Thời gian mở lớp không hợp lệ. Thời gian mở lớp không được nằm trong quá khứ.');
+      return;
+    }
+    if (editForm.start_date && editForm.opening_date && editForm.start_date < editForm.opening_date) {
+      toast.error('Thời gian bắt đầu học thực tế không được trước thời gian mở lớp.');
+      return;
+    }
     try {
       await classesApi.update(editingClass.id, {
         teacher_id: editForm.teacher_id ? Number(editForm.teacher_id) : null,
         max_capacity: Number(editForm.max_capacity) || 25,
+        opening_date: editForm.opening_date || null,
         start_date: editForm.start_date || null,
         end_date: editForm.end_date || null,
         status: editForm.status,
@@ -262,6 +298,51 @@ export const ClassesView = () => {
       setSelectedClassRoster({ id: cls.id, code: cls.class_code });
     } catch (e) {
       toast.error('Lỗi khi tải danh sách học viên: ' + e.message);
+    }
+  };
+
+  const handleOpenTransfer = async (cls) => {
+    setTransferSourceClass(cls);
+    setSelectedTargetId('');
+    setTransferReason('');
+    setShowTransferModal(true);
+    setLoadingTransferTargets(true);
+    try {
+      const res = await classesApi.getTransferTargets(cls.id);
+      const targets = res.data || [];
+      setTransferTargets(targets);
+      if (targets.length > 0) {
+        setSelectedTargetId(String(targets[0].id));
+      }
+    } catch (e) {
+      toast.error('Không thể tải danh sách lớp học đích: ' + e.message);
+      setTransferTargets([]);
+    } finally {
+      setLoadingTransferTargets(false);
+    }
+  };
+
+  const handleExecuteTransfer = async (e) => {
+    e.preventDefault();
+    if (!transferSourceClass || !selectedTargetId) {
+      toast.warning('Vui lòng chọn lớp học đích để chuyển.');
+      return;
+    }
+    setTransferSubmitting(true);
+    try {
+      await classesApi.transfer({
+        current_class_id: transferSourceClass.id,
+        target_class_id: Number(selectedTargetId),
+        reason: transferReason.trim() || undefined,
+      });
+      toast.success('Chuyển lớp thành công! Bạn đã được ghi danh sang lớp mới.');
+      setShowTransferModal(false);
+      setTransferSourceClass(null);
+      loadData();
+    } catch (e) {
+      toast.error(e.message || 'Lỗi khi chuyển lớp');
+    } finally {
+      setTransferSubmitting(false);
     }
   };
 
@@ -497,6 +578,13 @@ export const ClassesView = () => {
                         <span className="font-mono font-black text-indigo-700 bg-indigo-50 border border-indigo-200/70 px-2.5 py-1 rounded-xl shadow-2xs text-xs">
                           {cls.class_code}
                         </span>
+                        <div className="text-[10px] text-slate-500 mt-1 flex items-center gap-1">
+                          <Calendar className="w-3 h-3 text-slate-400" />
+                          <span>Mở: {cls.opening_date || cls.start_date || '--'}</span>
+                        </div>
+                        <div className="text-[10px] text-slate-400">
+                          Học: {cls.start_date || '--'} → {cls.end_date || '--'}
+                        </div>
                       </td>
 
                       {/* Course */}
@@ -603,10 +691,23 @@ export const ClassesView = () => {
                             </button>
                           </div>
                         ) : user?.role === 'STUDENT' ? (
-                          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-200">
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                            Đang theo học
-                          </span>
+                          <div className="flex items-center justify-end gap-2">
+                            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1.5 rounded-xl border border-emerald-200">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              Đang theo học
+                            </span>
+                            {['OPEN_FOR_ENROLLMENT', 'IN_PROGRESS'].includes(cls.status) && (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenTransfer(cls)}
+                                className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 hover:border-indigo-300 px-3 py-1.5 rounded-xl border border-indigo-200 transition cursor-pointer shadow-2xs active:scale-95"
+                                title="Chuyển sang lớp học khác"
+                              >
+                                <ArrowRightLeft className="w-3.5 h-3.5" />
+                                <span>Chuyển lớp</span>
+                              </button>
+                            )}
+                          </div>
                         ) : user?.role === 'TEACHER' ? (
                           <button
                             type="button"
@@ -713,23 +814,37 @@ export const ClassesView = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                  <label className="font-bold text-slate-700 block mb-1">Ngày bắt đầu:</label>
+                  <label className="font-bold text-slate-700 block mb-1">Thời gian mở lớp:</label>
                   <input
                     type="date"
                     required
+                    min={new Date().toISOString().split('T')[0]}
+                    value={newClass.opening_date}
+                    onChange={(e) => setNewClass({ ...newClass, opening_date: e.target.value })}
+                    className="w-full border border-slate-300 p-2.5 rounded-xl font-medium outline-hidden focus:border-indigo-600"
+                  />
+                  <span className="text-[10px] text-slate-400 block mt-0.5">≥ Hôm nay (OpeningTime)</span>
+                </div>
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Ngày bắt đầu học:</label>
+                  <input
+                    type="date"
+                    required
+                    min={newClass.opening_date || new Date().toISOString().split('T')[0]}
                     value={newClass.start_date}
                     onChange={(e) => handleNewClassStartDateChange(e.target.value)}
                     className="w-full border border-slate-300 p-2.5 rounded-xl font-medium outline-hidden focus:border-indigo-600"
                   />
+                  <span className="text-[10px] text-slate-400 block mt-0.5">Bắt đầu học thực tế</span>
                 </div>
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="font-bold text-slate-700">Ngày kết thúc:</label>
                     {getCourseDurationWeeks(newClass.course_id) && (
-                      <span className="text-[10px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded-md">
-                        Tự động (+{getCourseDurationWeeks(newClass.course_id)} tuần)
+                      <span className="text-[10px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-1 py-0.5 rounded-md">
+                        +{getCourseDurationWeeks(newClass.course_id)} tuần
                       </span>
                     )}
                   </div>
@@ -837,22 +952,35 @@ export const ClassesView = () => {
                 </select>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                  <label className="font-bold text-slate-700 block mb-1">Ngày bắt đầu:</label>
+                  <label className="font-bold text-slate-700 block mb-1">Thời gian mở lớp:</label>
                   <input
                     type="date"
+                    min={new Date().toISOString().split('T')[0]}
+                    value={editForm.opening_date}
+                    onChange={(e) => setEditForm({ ...editForm, opening_date: e.target.value })}
+                    className="w-full border border-slate-300 p-2.5 rounded-xl font-medium outline-hidden focus:border-indigo-600"
+                  />
+                  <span className="text-[10px] text-slate-400 block mt-0.5">≥ Hôm nay</span>
+                </div>
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Ngày bắt đầu học:</label>
+                  <input
+                    type="date"
+                    min={editForm.opening_date || new Date().toISOString().split('T')[0]}
                     value={editForm.start_date}
                     onChange={(e) => handleEditStartDateChange(e.target.value)}
                     className="w-full border border-slate-300 p-2.5 rounded-xl font-medium outline-hidden focus:border-indigo-600"
                   />
+                  <span className="text-[10px] text-slate-400 block mt-0.5">Bắt đầu học thực tế</span>
                 </div>
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="font-bold text-slate-700">Ngày kết thúc:</label>
                     {getCourseDurationWeeks(editingClass?.course_id) && (
-                      <span className="text-[10px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded-md">
-                        Tự động (+{getCourseDurationWeeks(editingClass?.course_id)} tuần)
+                      <span className="text-[10px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-1 py-0.5 rounded-md">
+                        +{getCourseDurationWeeks(editingClass?.course_id)} tuần
                       </span>
                     )}
                   </div>

@@ -117,24 +117,21 @@ def run_tests():
 
     req_create = client.post("/api/v1/enrollments/", json={
         "class_id": test_cls_id,
-        "note": "Kiểm thử đăng ký và hủy đơn khi PENDING"
+        "note": "Kiểm thử đăng ký trực tiếp không chờ duyệt"
     }, headers=s_headers)
     assert req_create.status_code == 200
     req_id = req_create.json()["data"]["id"]
-    assert req_create.json()["data"]["status"] == "PENDING"
+    assert req_create.json()["data"]["status"] == "APPROVED"
+    print("✓ 8.1. Direct Student Enrollment (Req 3): PASSED (APPROVED)")
 
-    # Student cancels the pending request
+    # Student cancels the direct enrollment
     req_cancel = client.patch(f"/api/v1/enrollments/{req_id}/cancel", headers=s_headers)
     assert req_cancel.status_code == 200
-    print("✓ 8.1. Student Enrollment Cancellation when PENDING: PASSED")
-
-    # Test that canceling an already APPROVED request fails (seeded request 1 is APPROVED)
-    approved_cancel = client.patch("/api/v1/enrollments/1/cancel", headers=s_headers)
-    assert approved_cancel.status_code in (400, 422) or not approved_cancel.json().get("success", True)
-    print("✓ 8.2. Prevent Cancellation when APPROVED: PASSED")
+    print("✓ 8.2. Student Enrollment Cancellation: PASSED")
 
     # Clean up test class
-    client.delete(f"/api/v1/classes/{test_cls_id}", headers=staff_headers)
+    del_cls = client.delete(f"/api/v1/classes/{test_cls_id}", headers=staff_headers)
+    assert del_cls.status_code == 200
 
     # 9. Academic Staff & Schedule Session CRUD
     new_sess_date = (date.today() + timedelta(days=10)).isoformat()
@@ -555,16 +552,20 @@ def run_tests():
     assert new_toeic_res.status_code == 200
     new_toeic_cls_id = new_toeic_res.json()["data"]["id"]
 
-    # 19.2. Student attempts to enroll directly in Course 3 class without progression -> Strictly Blocked (400)
-    unauthorized_enroll = client.post("/api/v1/enrollments/", json={
+    # 19.2. Direct Class Enrollment into Course 3 class succeeds without approval (Req 3)
+    direct_enroll = client.post("/api/v1/enrollments/", json={
         "class_id": new_toeic_cls_id,
-        "note": "Cố tình ghi danh khi chưa chuyển khóa"
+        "note": "Ghi danh trực tiếp không cần duyệt chuyển khóa"
     }, headers=s_headers)
-    assert unauthorized_enroll.status_code == 400
-    assert "chuyển khóa học" in unauthorized_enroll.json()["detail"].lower()
-    print("✓ 19.1. Prevent Direct Class Enrollment Without Approved Course Progression: PASSED")
+    assert direct_enroll.status_code == 200
+    enroll_id = direct_enroll.json()["data"]["id"]
+    assert direct_enroll.json()["data"]["status"] == "APPROVED"
+    print("✓ 19.1. Direct Class Enrollment Without Approval Requirement: PASSED (200 OK, APPROVED)")
 
-    # 19.3. Student submits Course Progression request to Course 3
+    # Cancel enrollment so student is not currently studying Course 3
+    client.patch(f"/api/v1/enrollments/{enroll_id}/cancel", headers=s_headers)
+
+    # 19.3. Student submits Course Progression (direct progression)
     prog_req_res = client.post("/api/v1/progression/request", json={
         "next_course_id": 3,
         "note": "Học viên đăng ký chuyển từ IELTS sang TOEIC 750"
@@ -572,39 +573,12 @@ def run_tests():
     assert prog_req_res.status_code == 200
     prog_data = prog_req_res.json()["data"]
     prog_id = prog_data["id"]
-    assert prog_data["is_confirmed"] is False
-    print("✓ 19.2. Student Submit Course Progression Request: PASSED")
+    print("✓ 19.2. Student Submit Course Progression Record: PASSED")
 
-    # 19.4. Student attempts to enroll while progression request is still PENDING -> Blocked (400)
-    pending_enroll = client.post("/api/v1/enrollments/", json={
-        "class_id": new_toeic_cls_id,
-        "note": "Cố tình ghi danh khi đơn chuyển khóa đang pending"
-    }, headers=s_headers)
-    assert pending_enroll.status_code == 400
-    assert "chờ phê duyệt" in pending_enroll.json()["detail"].lower()
-    print("✓ 19.3. Prevent Class Enrollment While Progression is PENDING: PASSED")
-
-    # 19.5. Academic Staff confirms the course progression request
-    confirm_prog_res = client.patch(f"/api/v1/progression/{prog_id}/confirm", headers=staff_headers)
-    assert confirm_prog_res.status_code == 200
-    assert confirm_prog_res.json()["data"]["is_confirmed"] is True
-    print("✓ 19.4. Academic Staff Confirm Course Progression: PASSED")
-
-    # 19.6. Student now enrolls successfully into the class of Course 3
-    success_enroll = client.post("/api/v1/enrollments/", json={
-        "class_id": new_toeic_cls_id,
-        "note": "Đăng ký sau khi đã được duyệt chuyển khóa"
-    }, headers=s_headers)
-    assert success_enroll.status_code == 200
-    enroll_id = success_enroll.json()["data"]["id"]
-    assert success_enroll.json()["data"]["status"] == "PENDING"
-    print("✓ 19.5. Student Successfully Enrolls into Class After Progression Approval: PASSED")
-
-    # 19.7. Clean up test data
-    client.patch(f"/api/v1/enrollments/{enroll_id}/cancel", headers=s_headers)
+    # 19.4. Clean up test data
     client.delete(f"/api/v1/classes/{new_toeic_cls_id}", headers=staff_headers)
     client.delete(f"/api/v1/progression/{prog_id}", headers=staff_headers)
-    print("✓ 19.6. Clean up Progression Test Class, Progression & Enrollment: PASSED")
+    print("✓ 19.3. Clean up Progression Test Class, Progression & Enrollment: PASSED")
 
     # ================= 20. TEACHER CLASS & GRADE ISOLATION =================
     # 20.1. Teacher 1 listing classes only returns classes taught by Teacher 1
@@ -714,6 +688,163 @@ def run_tests():
         if staff_parent_id:
             client.delete(f"/api/v1/accounts/{staff_parent_id}", headers=headers)
         print("✓ 21.5. Clean Up Test Parent Accounts: PASSED")
+
+    # ================= 22. NEW BUSINESS REQUIREMENTS (SMART-EDU) =================
+    # 22.1. Class Opening Date Validation (Req 1)
+    # Opening date cannot be in the past
+    past_date = (date.today() - timedelta(days=2)).isoformat()
+    future_opening = date.today().isoformat()
+    future_start = (date.today() + timedelta(days=10)).isoformat()
+    future_end = (date.today() + timedelta(days=40)).isoformat()
+    rand_suffix = int(time.time())
+
+    # Attempt to create class with opening date in the past -> must reject 400
+    invalid_class_res = client.post("/api/v1/classes/", json={
+        "class_code": f"TEST-PAST-{rand_suffix}",
+        "course_id": 1,
+        "teacher_id": 1,
+        "max_capacity": 20,
+        "opening_date": past_date,
+        "start_date": future_start,
+        "end_date": future_end
+    }, headers=headers)
+    assert invalid_class_res.status_code == 400, f"Expected 400, got {invalid_class_res.status_code}: {invalid_class_res.text}"
+    assert "quá khứ" in invalid_class_res.json()["detail"].lower()
+    print("✓ 22.1.1. Class Opening Date in Past Rejected: PASSED (400 Bad Request)")
+
+    # Valid opening date (today or future) -> succeeds
+    valid_class_res = client.post("/api/v1/classes/", json={
+        "class_code": f"TEST-VALID-{rand_suffix}",
+        "course_id": 1,
+        "teacher_id": 1,
+        "max_capacity": 20,
+        "opening_date": future_opening,
+        "start_date": future_start,
+        "end_date": future_end
+    }, headers=headers)
+    assert valid_class_res.status_code == 200, f"Expected 200, got {valid_class_res.status_code}: {valid_class_res.text}"
+    created_class_id = valid_class_res.json()["data"]["id"]
+    print("✓ 22.1.2. Class Opening Date Today/Future Created: PASSED (200 OK)")
+
+    # 22.2. Direct Class Enrollment without Approval (Req 3)
+    student_login = client.post("/api/v1/auth/login", json={"username": "student", "password": "student123"})
+    assert student_login.status_code == 200
+    student_token = student_login.json()["data"]["access_token"]
+    stu_headers = {"Authorization": f"Bearer {student_token}"}
+
+    enroll_res = client.post("/api/v1/enrollments/", json={
+        "class_id": created_class_id,
+        "note": "Ghi danh trực tiếp không qua duyệt"
+    }, headers=stu_headers)
+    assert enroll_res.status_code == 200, f"Expected 200, got {enroll_res.status_code}: {enroll_res.text}"
+    enroll_data = enroll_res.json()["data"]
+    assert enroll_data["status"] == "APPROVED"
+    print("✓ 22.2. Direct Enrollment (No Pending Approval): PASSED (Direct status: APPROVED)")
+
+    # 22.3. Auto Grade Locking on Ended Class & Unlock/Lock by Admin/Staff (Req 4)
+    # Class 11 is seeded with past dates (ended class: 2026-10-15)
+    ended_cls_res = client.get("/api/v1/classes/?q=IELTS-65-PAST", headers=headers)
+    assert ended_cls_res.status_code == 200
+    ended_cls_id = ended_cls_res.json()["data"][0]["id"]
+
+    # Check lock status for ended class
+    lock_status_res = client.get(f"/api/v1/grades/classes/{ended_cls_id}/lock-status", headers=headers)
+    assert lock_status_res.status_code == 200
+    lock_data = lock_status_res.json()["data"]
+    assert lock_data["is_locked"] is True
+    print(f"✓ 22.3.1. Ended Class Grade Sheet Auto-Locked: PASSED (Locked: {lock_data['is_locked']})")
+
+    # Teacher attempt to update grades in locked ended class -> rejected
+    locked_edit_res = client.post("/api/v1/grades/batch", json={
+        "class_id": ended_cls_id,
+        "grades": [{
+            "student_id": 1,
+            "attendance_score": 10.0,
+            "midterm_score": 10.0,
+            "final_score": 10.0
+        }]
+    }, headers=t_headers)
+    assert locked_edit_res.status_code == 400
+    assert "khóa" in locked_edit_res.json()["detail"].lower()
+    print("✓ 22.3.2. Teacher Modification on Locked Grades Blocked: PASSED (400 Bad Request)")
+
+    # Admin unlocks grades with reason
+    unlock_res = client.post(f"/api/v1/grades/classes/{ended_cls_id}/unlock", json={
+        "reason": "Giảng viên báo nhập nhầm cột điểm giữa kỳ cần chỉnh sửa"
+    }, headers=headers)
+    assert unlock_res.status_code == 200
+    print("✓ 22.3.3. Admin Unlock Grade Sheet with Reason: PASSED (200 OK)")
+
+    # Check lock history for ended class
+    history_res = client.get(f"/api/v1/grades/classes/{ended_cls_id}/lock-history", headers=headers)
+    assert history_res.status_code == 200
+    history_items = history_res.json()["data"]
+    assert len(history_items) > 0
+    assert history_items[0]["action"] == "UNLOCK"
+    assert "nhập nhầm" in history_items[0]["reason"]
+    print("✓ 22.3.4. Lock/Unlock Audit History Logged: PASSED")
+
+    # Admin re-locks grades with reason
+    relock_res = client.post(f"/api/v1/grades/classes/{ended_cls_id}/confirm", json={
+        "reason": "Đã chỉnh sửa xong, khóa lại bảng điểm"
+    }, headers=headers)
+    assert relock_res.status_code == 200
+    print("✓ 22.3.5. Admin Re-lock Grade Sheet with Reason: PASSED (200 OK)")
+
+    # 22.4. Tickets & Complaints Module (Req 5)
+    # Student sends complaint for ended class (which ended > 7 days ago) -> must be rejected due to deadline expired
+    expired_complaint_res = client.post("/api/v1/tickets/", json={
+        "ticket_type": "COMPLAINT",
+        "category": "GRADE",
+        "title": "Khiếu nại điểm lớp kết thúc từ lâu",
+        "content": "Em muốn khiếu nại điểm thi",
+        "related_class_id": ended_cls_id,
+        "receiver_role": "TEACHER"
+    }, headers=stu_headers)
+    assert expired_complaint_res.status_code == 400
+    assert "quá thời hạn" in expired_complaint_res.json()["detail"].lower()
+    print("✓ 22.4.1. Overdue Complaint (>7 days after class end) Rejected: PASSED (400 Bad Request)")
+
+    # Student sends regular REQUEST to Staff (requests have no deadline)
+    valid_request_res = client.post("/api/v1/tickets/", json={
+        "ticket_type": "REQUEST",
+        "category": "ENROLLMENT",
+        "title": "Yêu cầu hỗ trợ thông tin học phí",
+        "content": "Kính gửi phòng đào tạo, em muốn hỏi về biểu phí đóng học phí",
+        "receiver_role": "ACADEMIC_STAFF"
+    }, headers=stu_headers)
+    assert valid_request_res.status_code == 200, f"Expected 200, got {valid_request_res.status_code}: {valid_request_res.text}"
+    ticket_id = valid_request_res.json()["data"]["id"]
+    ticket_code = valid_request_res.json()["data"]["ticket_code"]
+    assert ticket_code.startswith("YC-")
+    print(f"✓ 22.4.2. Create Request Ticket ({ticket_code}): PASSED (200 OK)")
+
+    # Staff views inbox and replies to the ticket
+    reply_res = client.post(f"/api/v1/tickets/{ticket_id}/messages", json={
+        "content": "Chào em, em có thể đến văn phòng P.102 để nhận biên lai học phí nhé."
+    }, headers=staff_headers)
+    assert reply_res.status_code == 200
+    print("✓ 22.4.3. Staff Reply to Ticket: PASSED (200 OK)")
+
+    # Staff updates ticket status to RESOLVED
+    status_res = client.patch(f"/api/v1/tickets/{ticket_id}/status", json={
+        "status": "RESOLVED"
+    }, headers=staff_headers)
+    assert status_res.status_code == 200
+    assert status_res.json()["data"]["status"] == "RESOLVED"
+    print("✓ 22.4.4. Ticket Status Update (RESOLVED): PASSED (200 OK)")
+
+    # 22.5. Teacher Role Classroom Access Restriction (Req 6)
+    # Teacher calling GET /api/v1/classrooms/ must receive 403 Forbidden
+    teacher_classroom_res = client.get("/api/v1/classrooms/", headers=t_headers)
+    assert teacher_classroom_res.status_code == 403, f"Expected 403, got {teacher_classroom_res.status_code}"
+    print("✓ 22.5. Teacher Role Blocked from Classroom Management: PASSED (403 Forbidden)")
+
+    # Clean up test class and enrollment
+    enroll_id = enroll_data["id"]
+    client.patch(f"/api/v1/enrollments/{enroll_id}/cancel", headers=stu_headers)
+    client.delete(f"/api/v1/classes/{created_class_id}", headers=headers)
+    print("✓ 22.6. Clean Up Test Class: PASSED")
 
     print("\n🎉 ALL BACKEND INTEGRATION TESTS PASSED (100% SUCCESS)!")
 

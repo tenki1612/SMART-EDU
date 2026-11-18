@@ -48,6 +48,8 @@ class ScheduleSessionResponse(BaseModel):
     slot_name: str
     is_confirmed: bool
     status: str
+    class_start_date: Optional[date] = None
+    class_end_date: Optional[date] = None
 
     class Config:
         from_attributes = True

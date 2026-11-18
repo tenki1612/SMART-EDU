@@ -1,6 +1,7 @@
 from typing import List, Optional
+from datetime import datetime, date, timezone
 from sqlalchemy.orm import Session
-from app.modules.grades.models import GradeRecord
+from app.modules.grades.models import GradeRecord, GradeLockHistory
 from app.modules.classes.models import Class, ClassStudent
 from app.modules.students.models import Student
 from app.core.exceptions import BusinessException, NotFoundException
@@ -33,11 +34,63 @@ class GradeService:
         }
 
     @staticmethod
+    def check_and_update_class_grade_lock(db: Session, cls: Class) -> tuple[bool, str]:
+        """
+        Kiểm tra trạng thái khóa điểm của lớp học:
+        - Nếu Admin/Staff đã mở khóa thủ công: cho phép sửa.
+        - Nếu lớp học đã kết thúc (today > cls.end_date) hoặc status COMPLETED: tự động khóa sổ, chặn sửa điểm.
+        - Nếu bảng điểm đã được xác nhận chính thức: khóa sổ.
+        """
+        today = date.today()
+        # 1. Nếu Admin/Staff mở khóa thủ công thì cho phép giảng viên sửa
+        if cls.is_grade_unlocked:
+            return False, "Bảng điểm đang được mở khóa thủ công bởi Quản trị viên/Học vụ."
+
+        # 2. Lớp học đã kết thúc dựa trên end_date của lớp (LOP_HOC)
+        if cls.end_date and today > cls.end_date:
+            # Tự động khóa các bản ghi điểm chưa khóa
+            unlocked = db.query(GradeRecord).filter(
+                GradeRecord.class_id == cls.id,
+                GradeRecord.is_confirmed == False,
+                GradeRecord.is_deleted == False
+            ).all()
+            if unlocked:
+                for u in unlocked:
+                    u.is_confirmed = True
+                hist = GradeLockHistory(
+                    class_id=cls.id,
+                    action="AUTO_LOCK",
+                    performed_by=None,
+                    performed_at=datetime.now(timezone.utc),
+                    reason=f"Hệ thống tự động khóa sổ điểm do lớp học đã kết thúc ngày {cls.end_date}."
+                )
+                db.add(hist)
+                db.commit()
+            return True, f"Bảng điểm đã được hệ thống tự động khóa do lớp học đã kết thúc ngày {cls.end_date}."
+
+        if cls.status == "COMPLETED":
+            return True, "Bảng điểm đã tự động khóa do lớp học đã hoàn thành."
+
+        # 3. Bảng điểm đã được xác nhận/khóa sổ
+        is_locked = db.query(GradeRecord).filter(
+            GradeRecord.class_id == cls.id,
+            GradeRecord.is_confirmed == True,
+            GradeRecord.is_deleted == False
+        ).first() is not None
+        if is_locked:
+            return True, "Bảng điểm của lớp học đã được khóa sổ chính thức."
+
+        return False, "Bảng điểm đang mở cho giảng viên nhập điểm."
+
+    @staticmethod
     def get_class_grading_sheet(db: Session, class_id: int) -> List[ClassGradingSheetStudent]:
         """FR-69: Xem danh sách học viên phục vụ nhập điểm"""
         cls = db.query(Class).filter(Class.id == class_id, Class.is_deleted == False).first()
         if not cls:
             raise NotFoundException("Lớp học", class_id)
+
+        # Tự động đồng bộ và kiểm tra khóa điểm nếu lớp học đã kết thúc
+        GradeService.check_and_update_class_grade_lock(db, cls)
 
         # Lấy danh sách học viên trong lớp
         roster = db.query(ClassStudent).filter(
@@ -83,14 +136,10 @@ class GradeService:
         if not cls:
             raise NotFoundException("Lớp học", data.class_id)
 
-        # Kiểm tra nếu bảng điểm của lớp đã bị khóa sổ chính thức
-        is_locked = db.query(GradeRecord).filter(
-            GradeRecord.class_id == data.class_id,
-            GradeRecord.is_confirmed == True,
-            GradeRecord.is_deleted == False
-        ).first()
+        # Kiểm tra trạng thái khóa điểm (Tự động khóa khi lớp kết thúc, hoặc khóa chính thức)
+        is_locked, lock_msg = GradeService.check_and_update_class_grade_lock(db, cls)
         if is_locked:
-            raise BusinessException("Bảng điểm của lớp học đã được khóa chính thức. Giảng viên không có quyền chỉnh sửa hoặc lưu điểm.")
+            raise BusinessException(f"Không thể lưu điểm: {lock_msg}")
 
         for item in data.grades:
             # FR-73: Kiểm tra tính hợp lệ của điểm (0 - 10)
@@ -109,8 +158,8 @@ class GradeService:
                 grade = GradeRecord(class_id=data.class_id, student_id=item.student_id)
                 db.add(grade)
 
-            if grade.is_confirmed:
-                raise BusinessException("Điểm của lớp đã được xác nhận chính thức, không thể sửa đổi.")
+            if grade.is_confirmed and not cls.is_grade_unlocked:
+                raise BusinessException("Điểm của lớp đã được khóa chính thức, không thể sửa đổi.")
 
             grade.attendance_score = item.attendance_score
             grade.midterm_score = item.midterm_score
@@ -128,8 +177,12 @@ class GradeService:
         return True
 
     @staticmethod
-    def confirm_grades(db: Session, class_id: int) -> bool:
-        """FR-76 & FR-77: Xác nhận kết quả học tập chính thức & Cập nhật trạng thái"""
+    def confirm_grades(db: Session, class_id: int, user_id: Optional[int] = None, reason: Optional[str] = None) -> bool:
+        """FR-76 & FR-77: Khóa sổ kết quả học tập chính thức & Ghi nhận lịch sử"""
+        cls = db.query(Class).filter(Class.id == class_id, Class.is_deleted == False).first()
+        if not cls:
+            raise NotFoundException("Lớp học", class_id)
+
         grades = db.query(GradeRecord).filter(
             GradeRecord.class_id == class_id,
             GradeRecord.is_deleted == False
@@ -139,20 +192,82 @@ class GradeService:
 
         for g in grades:
             g.is_confirmed = True
+        cls.is_grade_unlocked = False
+
+        hist = GradeLockHistory(
+            class_id=class_id,
+            action="LOCK",
+            performed_by=user_id,
+            performed_at=datetime.now(timezone.utc),
+            reason=reason or "Quản trị viên/Học vụ khóa sổ bảng điểm"
+        )
+        db.add(hist)
         db.commit()
         return True
 
     @staticmethod
-    def unlock_grades(db: Session, class_id: int) -> bool:
-        """Mở khóa bảng điểm để giáo viên có thể chỉnh sửa lại điểm khi cần điều chỉnh"""
+    def unlock_grades(db: Session, class_id: int, user_id: Optional[int] = None, reason: Optional[str] = None) -> bool:
+        """Mở khóa bảng điểm để giáo viên có thể chỉnh sửa lại điểm khi cần điều chỉnh & Ghi nhận lịch sử"""
+        cls = db.query(Class).filter(Class.id == class_id, Class.is_deleted == False).first()
+        if not cls:
+            raise NotFoundException("Lớp học", class_id)
+
         grades = db.query(GradeRecord).filter(
             GradeRecord.class_id == class_id,
             GradeRecord.is_deleted == False
         ).all()
         for g in grades:
             g.is_confirmed = False
+        cls.is_grade_unlocked = True
+
+        hist = GradeLockHistory(
+            class_id=class_id,
+            action="UNLOCK",
+            performed_by=user_id,
+            performed_at=datetime.now(timezone.utc),
+            reason=reason or "Quản trị viên/Học vụ mở khóa điểm cho giảng viên điều chỉnh"
+        )
+        db.add(hist)
         db.commit()
         return True
+
+    @staticmethod
+    def get_lock_history(db: Session, class_id: int) -> List[dict]:
+        """Lấy lịch sử khóa/mở khóa sổ điểm của lớp học"""
+        from app.modules.accounts.models import User
+        logs = db.query(GradeLockHistory).filter(
+            GradeLockHistory.class_id == class_id
+        ).order_by(GradeLockHistory.id.desc()).all()
+
+        results = []
+        for l in logs:
+            user = db.query(User).filter(User.id == l.performed_by).first() if l.performed_by else None
+            results.append({
+                "id": l.id,
+                "class_id": l.class_id,
+                "action": l.action,
+                "performed_by": l.performed_by,
+                "performer_name": user.full_name if user else "Hệ thống tự động",
+                "performed_at": l.performed_at,
+                "reason": l.reason
+            })
+        return results
+
+    @staticmethod
+    def auto_lock_all_ended_classes(db: Session) -> int:
+        """Kiểm tra và tự động khóa sổ điểm cho tất cả các lớp học đã kết thúc"""
+        today = date.today()
+        ended_classes = db.query(Class).filter(
+            Class.end_date < today,
+            Class.is_grade_unlocked == False,
+            Class.is_deleted == False
+        ).all()
+        locked_count = 0
+        for cls in ended_classes:
+            is_locked, _ = GradeService.check_and_update_class_grade_lock(db, cls)
+            if is_locked:
+                locked_count += 1
+        return locked_count
 
     @staticmethod
     def add_student_to_grading_sheet(
@@ -163,13 +278,9 @@ class GradeService:
         if not cls:
             raise NotFoundException("Lớp học", class_id)
 
-        is_locked = db.query(GradeRecord).filter(
-            GradeRecord.class_id == class_id,
-            GradeRecord.is_confirmed == True,
-            GradeRecord.is_deleted == False
-        ).first()
+        is_locked, lock_msg = GradeService.check_and_update_class_grade_lock(db, cls)
         if is_locked:
-            raise BusinessException("Bảng điểm của lớp học đã được khóa chính thức, không thể thêm học viên.")
+            raise BusinessException(f"Bảng điểm của lớp học đang bị khóa: {lock_msg}")
 
         student = db.query(Student).filter(Student.id == data.student_id, Student.is_deleted == False).first()
         if not student:
@@ -247,6 +358,10 @@ class GradeService:
         if not cls:
             raise NotFoundException("Lớp học", class_id)
 
+        is_locked, lock_msg = GradeService.check_and_update_class_grade_lock(db, cls)
+        if is_locked:
+            raise BusinessException(f"Không thể xóa học viên khỏi bảng điểm đã khóa: {lock_msg}")
+
         grade = db.query(GradeRecord).filter(
             GradeRecord.class_id == class_id,
             GradeRecord.student_id == student_id,
@@ -254,8 +369,6 @@ class GradeService:
         ).first()
 
         if grade:
-            if grade.is_confirmed:
-                raise BusinessException("Không thể xóa điểm của lớp đã được khóa chính thức.")
             grade.is_deleted = True
 
         cs = db.query(ClassStudent).filter(

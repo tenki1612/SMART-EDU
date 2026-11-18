@@ -215,6 +215,14 @@ export const classesApi = {
         });
         return res.data;
     },
+    getTransferTargets: async (classId) => {
+        const res = await apiClient.get(`/classes/${classId}/transfer-targets`);
+        return res.data;
+    },
+    transfer: async (data) => {
+        const res = await apiClient.post('/classes/transfer', data);
+        return res.data;
+    },
 };
 
 // 7. Classrooms API
@@ -335,12 +343,20 @@ export const gradesApi = {
         });
         return res.data;
     },
-    confirmGrades: async (classId) => {
-        const res = await apiClient.patch(`/grades/classes/${classId}/confirm`);
+    confirmGrades: async (classId, reason) => {
+        const res = await apiClient.patch(`/grades/classes/${classId}/confirm`, { reason });
         return res.data;
     },
-    unlockGrades: async (classId) => {
-        const res = await apiClient.patch(`/grades/classes/${classId}/unlock`);
+    unlockGrades: async (classId, reason) => {
+        const res = await apiClient.patch(`/grades/classes/${classId}/unlock`, { reason });
+        return res.data;
+    },
+    getLockStatus: async (classId) => {
+        const res = await apiClient.get(`/grades/classes/${classId}/lock-status`);
+        return res.data;
+    },
+    getLockHistory: async (classId) => {
+        const res = await apiClient.get(`/grades/classes/${classId}/lock-history`);
         return res.data;
     },
     addStudentToGradeSheet: async (classId, data) => {
@@ -413,6 +429,38 @@ export const progressionParentApi = {
     },
     getWardGrades: async (studentId) => {
         const res = await apiClient.get(`/progression/parent/wards/${studentId}/grades`);
+        return res.data;
+    },
+};
+
+// 12. Tickets & Complaints / Requests API
+export const ticketsApi = {
+    create: async (data) => {
+        const res = await apiClient.post('/tickets/', data);
+        return res.data;
+    },
+    listSent: async () => {
+        const res = await apiClient.get('/tickets/sent');
+        return res.data;
+    },
+    listInbox: async () => {
+        const res = await apiClient.get('/tickets/inbox');
+        return res.data;
+    },
+    getDetail: async (id) => {
+        const res = await apiClient.get(`/tickets/${id}`);
+        return res.data;
+    },
+    sendMessage: async (id, content) => {
+        const res = await apiClient.post(`/tickets/${id}/messages`, { content });
+        return res.data;
+    },
+    updateStatus: async (id, status) => {
+        const res = await apiClient.patch(`/tickets/${id}/status`, { status });
+        return res.data;
+    },
+    checkDeadline: async (classId) => {
+        const res = await apiClient.get(`/tickets/check-deadline/${classId}`);
         return res.data;
     },
 };

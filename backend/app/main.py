@@ -28,11 +28,37 @@ def ensure_schema():
                 conn.exec_driver_sql("ALTER TABLE users ADD COLUMN reset_token_expires_at DATETIME")
             if "avatar_url" not in existing_cols:
                 conn.exec_driver_sql("ALTER TABLE users ADD COLUMN avatar_url VARCHAR(500)")
+            
+            # Check LOP_HOC table
+            res_lh = conn.exec_driver_sql("PRAGMA table_info(LOP_HOC)").fetchall()
+            existing_lh = {row[1] for row in res_lh}
+            if "NgayMoLop" not in existing_lh:
+                conn.exec_driver_sql("ALTER TABLE LOP_HOC ADD COLUMN NgayMoLop DATE")
+            if "MoKhoaDiemThuCong" not in existing_lh:
+                conn.exec_driver_sql("ALTER TABLE LOP_HOC ADD COLUMN MoKhoaDiemThuCong BOOLEAN DEFAULT 0")
+
             conn.commit()
         except Exception:
             pass
 
 ensure_schema()
+
+def auto_lock_ended_classes_on_startup():
+    """Tự động khóa sổ bảng điểm cho tất cả các lớp học đã kết thúc khi khởi động"""
+    from app.core.database import SessionLocal
+    from app.modules.grades.service import GradeService
+    db = SessionLocal()
+    try:
+        GradeService.auto_lock_all_ended_classes(db)
+    except Exception:
+        pass
+    finally:
+        db.close()
+
+try:
+    auto_lock_ended_classes_on_startup()
+except Exception:
+    pass
 
 app = FastAPI(
     title=settings.PROJECT_NAME,

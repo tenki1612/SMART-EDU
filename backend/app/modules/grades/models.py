@@ -1,5 +1,6 @@
-from sqlalchemy import Column, String, Integer, ForeignKey, Float, Boolean, Text
+from sqlalchemy import Column, String, Integer, ForeignKey, Float, Boolean, Text, DateTime
 from sqlalchemy.orm import relationship
+from datetime import datetime, timezone
 from app.core.database import Base
 from app.common.base_model import TimestampMixin
 
@@ -15,9 +16,24 @@ class GradeRecord(Base, TimestampMixin):
     final_score = Column("DiemCuoiKy", Float, default=0.0)      # Điểm cuối kỳ (0-10)
     total_score = Column("DiemTongKet", Float, default=0.0)      # Tổng kết
     result_status = Column("KetQua", String(50), default="PENDING") # PENDING, PASSED, FAILED (FR-75)
-    is_confirmed = Column("DaKhoaSo", Boolean, default=False) # FR-76: Xác nhận kết quả chính thức
+    is_confirmed = Column("DaKhoaSo", Boolean, default=False) # FR-76: Xác nhận kết quả chính thức (khóa sổ điểm)
     note = Column("GhiChu", Text, nullable=True)
 
     # Relationships
     enrolled_class = relationship("Class", back_populates="grades")
     student = relationship("Student", back_populates="grades")
+
+class GradeLockHistory(Base, TimestampMixin):
+    """Lịch sử khóa / mở khóa sổ điểm lớp học (Audit log cho việc tự động khóa và mở khóa)"""
+    __tablename__ = "LICHSU_KHOA_DIEM"
+
+    id = Column("MaLichSu", Integer, primary_key=True, index=True, autoincrement=True)
+    class_id = Column("MaLopHoc", Integer, ForeignKey("LOP_HOC.MaLopHoc"), nullable=False, index=True)
+    action = Column("HanhDong", String(50), nullable=False) # LOCK, UNLOCK, AUTO_LOCK
+    performed_by = Column("MaNguoiThucHien", Integer, ForeignKey("NGUOI_DUNG.MaNguoiDung"), nullable=True)
+    performed_at = Column("ThoiGian", DateTime, default=lambda: datetime.now(timezone.utc))
+    reason = Column("LyDo", Text, nullable=True)
+
+    # Relationships
+    enrolled_class = relationship("Class")
+    user = relationship("User")

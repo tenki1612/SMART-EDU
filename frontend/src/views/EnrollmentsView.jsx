@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { useConfirm } from '../context/ConfirmDialogContext';
 import { useHeaderSlot } from '../context/HeaderSlotContext';
-import { enrollmentsApi, classesApi, progressionParentApi } from '../services/api';
+import { enrollmentsApi, classesApi } from '../services/api';
 import { UserAvatar } from '../components/common/UserAvatar';
 import {
   CheckCircle2,
@@ -36,22 +36,17 @@ export const EnrollmentsView = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedClassToRegister, setSelectedClassToRegister] = useState(null);
   const [registerNote, setRegisterNote] = useState('');
-  const [rejectingRequestId, setRejectingRequestId] = useState(null);
-  const [rejectionReason, setRejectionReason] = useState('');
   const [filterStatus, setFilterStatus] = useState('ALL');
-  const [myProgressions, setMyProgressions] = useState([]);
 
   const loadData = async () => {
     try {
       if (isStudent) {
-        const [resCls, resReq, resProg] = await Promise.all([
+        const [resCls, resReq] = await Promise.all([
           classesApi.list(undefined, 'OPEN_FOR_ENROLLMENT'),
           enrollmentsApi.getMyRequests(),
-          progressionParentApi.getMyProgressions().catch(() => ({ data: [] })),
         ]);
         setOpenClasses(resCls.data || []);
         setRequests(resReq.data || []);
-        setMyProgressions(resProg.data || []);
       } else if (isStaffOrAdmin) {
         const resReq = await enrollmentsApi.listAll(
           filterStatus === 'ALL' ? undefined : filterStatus
@@ -73,28 +68,10 @@ export const EnrollmentsView = () => {
     if (!selectedClassToRegister) return;
     try {
       await enrollmentsApi.createRequest(selectedClassToRegister.id, registerNote);
-      toast.success('Đã gửi yêu cầu đăng ký lớp học thành công! Vui lòng chờ Học vụ xét duyệt.');
+      toast.success('Đăng ký lớp học thành công! Bạn đã được ghi danh chính thức vào lớp.');
       setSelectedClassToRegister(null);
       setRegisterNote('');
       setStudentSubTab('requests');
-      loadData();
-    } catch (e) {
-      toast.error(e.message);
-    }
-  };
-
-  const handleApprove = async (id) => {
-    const isConfirmed = await confirm({
-      title: 'Phê duyệt đăng ký lớp',
-      message: 'Xác nhận duyệt yêu cầu đăng ký này và ghi danh học viên vào lớp học?',
-      confirmText: 'Phê duyệt',
-      cancelText: 'Xem lại',
-      type: 'info',
-    });
-    if (!isConfirmed) return;
-    try {
-      await enrollmentsApi.approve(id);
-      toast.success('Đã duyệt đăng ký thành công và ghi danh học viên vào lớp!');
       loadData();
     } catch (e) {
       toast.error(e.message);
@@ -118,29 +95,6 @@ export const EnrollmentsView = () => {
       toast.error(e.message || 'Không thể hủy yêu cầu');
     }
   };
-
-  const handleReject = async (e) => {
-    e.preventDefault();
-    if (!rejectingRequestId) return;
-    try {
-      await enrollmentsApi.reject(rejectingRequestId, rejectionReason);
-      toast.info('Đã từ chối đơn đăng ký và gửi thông báo phản hồi.');
-      setRejectingRequestId(null);
-      setRejectionReason('');
-      loadData();
-    } catch (e) {
-      toast.error(e.message);
-    }
-  };
-
-  // Set of confirmed progression course IDs for student
-  const confirmedProgressionCourseIds = useMemo(() => {
-    const ids = new Set();
-    myProgressions.forEach((p) => {
-      if (p.is_confirmed) ids.add(p.next_course_id);
-    });
-    return ids;
-  }, [myProgressions]);
 
   // KPI Calculations
   const stats = useMemo(() => {
@@ -249,16 +203,6 @@ export const EnrollmentsView = () => {
       {/* Student: Open Classes to Register */}
       {isStudent && studentSubTab === 'classes' && (
         <div className="space-y-4">
-          <div className="p-4 bg-indigo-50/80 border border-indigo-200/80 rounded-2xl flex items-start gap-3">
-            <Info className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
-            <div className="text-xs text-indigo-950 space-y-1">
-              <span className="font-bold block">Quy tắc đăng ký lớp học:</span>
-              <p className="text-slate-600 font-medium leading-relaxed">
-                Học viên chỉ có thể đăng ký vào các lớp học thuộc khóa học mình đã theo học hoặc đã được Học vụ phê duyệt chuyển khóa. Nếu muốn học khóa học mới, vui lòng vào mục <strong>Chuyển khóa học & Lộ trình</strong> để gửi yêu cầu chuyển khóa trước.
-              </p>
-            </div>
-          </div>
-
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-2">
               <School className="w-4 h-4 text-indigo-600" />
@@ -292,13 +236,6 @@ export const EnrollmentsView = () => {
                     <p className="text-xs text-indigo-600 font-bold mt-1">
                       Chuẩn đầu ra: {cls.target_level}
                     </p>
-
-                    {!cls.is_enrolled && !confirmedProgressionCourseIds.has(cls.course_id) && (
-                      <div className="mt-2 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200/80 px-2 py-1 rounded-lg flex items-center gap-1">
-                        <AlertTriangle className="w-3 h-3 text-amber-600 shrink-0" />
-                        <span>Cần đăng ký chuyển khóa trước khi ghi danh</span>
-                      </div>
-                    )}
                   </div>
 
                   <div className="mt-4 pt-3.5 border-t border-slate-100 flex items-center justify-between text-xs">
@@ -479,28 +416,10 @@ export const EnrollmentsView = () => {
 
                         <td className="p-4 pr-5 text-right">
                           {isStaffOrAdmin && (
-                            <div className="space-x-1.5 inline-flex items-center justify-end">
-                              {r.status === 'PENDING' ? (
-                                <>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleApprove(r.id)}
-                                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-xs cursor-pointer active:scale-95 text-xs"
-                                  >
-                                    Duyệt đơn
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => setRejectingRequestId(r.id)}
-                                    className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold rounded-xl cursor-pointer active:scale-95 text-xs"
-                                  >
-                                    Từ chối
-                                  </button>
-                                </>
-                              ) : (
-                                <span className="text-slate-400 font-medium text-xs">Đã xử lý</span>
-                              )}
-                            </div>
+                            <span className="text-emerald-700 font-bold text-xs bg-emerald-50 border border-emerald-200/80 px-2.5 py-1 rounded-xl inline-flex items-center gap-1">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>Ghi danh trực tiếp</span>
+                            </span>
                           )}
 
                           {isStudent && (
@@ -598,66 +517,6 @@ export const EnrollmentsView = () => {
                 >
                   <Send className="w-3.5 h-3.5" />
                   <span>Gửi yêu cầu đăng ký</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>,
-        document.body
-      )}
-
-      {/* ================= MODAL: TỪ CHỐI ĐƠN ĐĂNG KÝ ================= */}
-      {rejectingRequestId && createPortal(
-        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl border border-slate-200 relative overflow-hidden">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-2xl bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-600">
-                  <Ban className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-black text-slate-900">Từ chối Đơn đăng ký #{rejectingRequestId}</h3>
-                  <span className="text-xs text-slate-400">Vui lòng cung cấp lý do để học viên nhận được thông báo</span>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setRejectingRequestId(null)}
-                className="w-8 h-8 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 flex items-center justify-center font-bold text-sm cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleReject} className="space-y-4 text-xs">
-              <div>
-                <label className="font-bold text-slate-700 block mb-1">
-                  Lý do từ chối đăng ký:
-                </label>
-                <textarea
-                  required
-                  rows={3}
-                  placeholder="Ví dụ: Lớp đã đủ sĩ số, hoặc thông tin học phí chưa chính xác..."
-                  value={rejectionReason}
-                  onChange={(e) => setRejectionReason(e.target.value)}
-                  className="w-full border border-slate-300 p-2.5 rounded-xl outline-hidden focus:border-rose-600 text-xs font-medium"
-                />
-              </div>
-
-              <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setRejectingRequestId(null)}
-                  className="px-4 py-2.5 border border-slate-300 rounded-xl font-bold text-slate-600 hover:bg-slate-50 cursor-pointer"
-                >
-                  Đóng lại
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold shadow-xs cursor-pointer flex items-center gap-1.5 active:scale-95"
-                >
-                  <Ban className="w-3.5 h-3.5" />
-                  <span>Xác nhận từ chối</span>
                 </button>
               </div>
             </form>

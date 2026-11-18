@@ -100,7 +100,11 @@ class TeacherService:
 
     @staticmethod
     def search_teachers(db: Session, q: Optional[str] = None, status: Optional[str] = None) -> List[dict]:
-        query = db.query(Teacher).join(User).filter(Teacher.is_deleted == False)
+        query = db.query(Teacher).join(User, Teacher.user_id == User.id).filter(
+            Teacher.is_deleted == False,
+            User.is_active == True,
+            User.role == RoleEnum.TEACHER
+        )
         if q:
             query = query.filter(
                 (Teacher.teacher_code.ilike(f"%{q}%")) |

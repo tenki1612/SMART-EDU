@@ -8,8 +8,9 @@ from app.modules.classrooms.models import Classroom
 from app.modules.classes.models import Class, ClassStudent
 from app.modules.enrollments.models import EnrollmentRequest
 from app.modules.schedules.models import ScheduleSession
-from app.modules.grades.models import GradeRecord
+from app.modules.grades.models import GradeRecord, GradeLockHistory
 from app.modules.progression_parent import models as progression_models
+from app.modules.tickets.models import Ticket, TicketMessage
 
 __all__ = [
     "Base",
@@ -23,6 +24,9 @@ __all__ = [
     "EnrollmentRequest",
     "ScheduleSession",
     "GradeRecord",
-    "progression_models"
+    "GradeLockHistory",
+    "progression_models",
+    "Ticket",
+    "TicketMessage"
 ]
 

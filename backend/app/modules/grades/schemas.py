@@ -1,5 +1,21 @@
 from typing import Optional, List
+from datetime import datetime
 from pydantic import BaseModel, Field
+
+class GradeLockUnlockRequest(BaseModel):
+    reason: Optional[str] = None
+
+class GradeLockHistoryResponse(BaseModel):
+    id: int
+    class_id: int
+    action: str
+    performed_by: Optional[int] = None
+    performer_name: Optional[str] = None
+    performed_at: datetime
+    reason: Optional[str] = None
+
+    class Config:
+        from_attributes = True
 
 class GradeInputItem(BaseModel):
     student_id: int

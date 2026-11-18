@@ -43,50 +43,7 @@ class EnrollmentService:
             raise BusinessException("Lớp học hiện không trong trạng thái mở đăng ký.")
         
         if cls.current_enrolled >= cls.max_capacity:
-            raise BusinessException("Lớp học đã đủ sĩ số, không thể gửi yêu cầu đăng ký.")
-
-        # --- KIỂM TRA ĐIỀU KIỆN CHUYỂN KHÓA HỌC / TIẾN TRÌNH KHÓA HỌC ---
-        # Học viên phải có lịch sử học khóa học này HOẶC đã có xác nhận chuyển khóa học sang khóa này
-        has_course_history = db.query(ClassStudent).join(
-            Class, ClassStudent.class_id == Class.id
-        ).filter(
-            ClassStudent.student_id == student_id,
-            Class.course_id == cls.course_id,
-            ClassStudent.is_deleted == False
-        ).first() is not None
-
-        if not has_course_history:
-            from app.modules.progression_parent.models import CourseProgression
-            confirmed_prog = db.query(CourseProgression).filter(
-                CourseProgression.student_id == student_id,
-                CourseProgression.next_course_id == cls.course_id,
-                CourseProgression.is_confirmed == True,
-                CourseProgression.is_deleted == False
-            ).first()
-
-            if not confirmed_prog:
-                pending_prog = db.query(CourseProgression).filter(
-                    CourseProgression.student_id == student_id,
-                    CourseProgression.next_course_id == cls.course_id,
-                    CourseProgression.is_confirmed == False,
-                    CourseProgression.is_deleted == False
-                ).first()
-                if pending_prog:
-                    raise BusinessException(
-                        "Yêu cầu chuyển khóa học của bạn đang chờ phê duyệt. Vui lòng đợi Học vụ duyệt chuyển khóa trước khi đăng ký lớp học."
-                    )
-                raise BusinessException(
-                    "Học viên phải đăng ký chuyển khóa học và được phê duyệt trước khi đăng ký các lớp học thuộc khóa học này."
-                )
-
-        # Check if already requested or enrolled
-        existing_req = db.query(EnrollmentRequest).filter(
-            EnrollmentRequest.student_id == student_id,
-            EnrollmentRequest.class_id == data.class_id,
-            EnrollmentRequest.status == "PENDING"
-        ).first()
-        if existing_req:
-            raise BusinessException("Bạn đã có yêu cầu đăng ký đang chờ xét duyệt cho lớp học này.")
+            raise BusinessException("Lớp học đã đủ sĩ số tối đa, không thể đăng ký.")
 
         already_enrolled = db.query(ClassStudent).filter(
             ClassStudent.student_id == student_id,
@@ -96,11 +53,28 @@ class EnrollmentService:
         if already_enrolled:
             raise BusinessException("Bạn đã là thành viên chính thức của lớp học này.")
 
+        # Ghi danh trực tiếp không cần phê duyệt thủ công
+        cs = ClassStudent(class_id=cls.id, student_id=student_id, status="ENROLLED")
+        db.add(cs)
+        cls.current_enrolled = (cls.current_enrolled or 0) + 1
+
+        # Khởi tạo bản ghi điểm học tập nếu chưa có
+        existing_grade = db.query(GradeRecord).filter(
+            GradeRecord.class_id == cls.id,
+            GradeRecord.student_id == student_id,
+            GradeRecord.is_deleted == False
+        ).first()
+        if not existing_grade:
+            grade = GradeRecord(class_id=cls.id, student_id=student_id, result_status="PENDING")
+            db.add(grade)
+
+        # Lưu bản ghi lịch sử đăng ký trực tiếp
         req = EnrollmentRequest(
             student_id=student_id,
             class_id=data.class_id,
-            note=data.note,
-            status="PENDING"
+            note=data.note or "Đăng ký lớp học trực tiếp thành công",
+            status="APPROVED",
+            reviewed_at=datetime.now(timezone.utc)
         )
         db.add(req)
         db.commit()
@@ -115,9 +89,22 @@ class EnrollmentService:
         ).first()
         if not req:
             raise NotFoundException("Yêu cầu đăng ký", request_id)
-        if req.status != "PENDING":
-            raise BusinessException("Chỉ có thể hủy yêu cầu khi đang ở trạng thái 'Chờ duyệt' (PENDING).")
+        if req.status == "CANCELLED":
+            raise BusinessException("Yêu cầu đăng ký này đã được hủy trước đó.")
         
+        # Hủy ghi danh: cập nhật trạng thái lớp học và giảm sĩ số
+        cs = db.query(ClassStudent).filter(
+            ClassStudent.class_id == req.class_id,
+            ClassStudent.student_id == student_id,
+            ClassStudent.is_deleted == False
+        ).first()
+        if cs:
+            cs.status = "DROPPED"
+            cs.is_deleted = True
+            cls = db.query(Class).filter(Class.id == req.class_id).first()
+            if cls and cls.current_enrolled > 0:
+                cls.current_enrolled -= 1
+
         req.status = "CANCELLED"
         db.commit()
         return True

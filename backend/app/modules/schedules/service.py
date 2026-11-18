@@ -17,6 +17,8 @@ class ScheduleService:
         class_code = s.session_class.class_code if s.session_class else ""
         course_title = s.session_class.course.title if (s.session_class and s.session_class.course) else ""
         room_code = s.classroom.room_code if s.classroom else ""
+        class_start_date = s.session_class.start_date if s.session_class else None
+        class_end_date = s.session_class.end_date if s.session_class else None
         return {
             "id": s.id,
             "class_id": s.class_id,
@@ -31,7 +33,9 @@ class ScheduleService:
             "end_time": s.end_time,
             "slot_name": s.slot_name,
             "is_confirmed": s.is_confirmed,
-            "status": s.status
+            "status": s.status,
+            "class_start_date": class_start_date,
+            "class_end_date": class_end_date
         }
 
     @staticmethod
@@ -153,12 +157,22 @@ class ScheduleService:
 
     @staticmethod
     def get_personal_schedule(db: Session, user_id: int, role: str) -> List[dict]:
-        """FR-68: Xem thời khóa biểu cá nhân theo vai trò (Teacher / Student)"""
+        """FR-68: Xem thời khóa biểu cá nhân theo vai trò (Teacher / Student / Parent)
+        Hiển thị toàn bộ lịch học/dạy trong phạm vi start_date -> end_date của lớp học, không giới hạn số tuần.
+        """
         if role == "TEACHER":
             teacher = db.query(Teacher).filter(Teacher.user_id == user_id, Teacher.is_deleted == False).first()
             if not teacher:
                 return []
-            return ScheduleService.list_sessions(db, teacher_id=teacher.id)
+            sessions = db.query(ScheduleSession).join(Class, ScheduleSession.class_id == Class.id).filter(
+                ScheduleSession.teacher_id == teacher.id,
+                ScheduleSession.status != "CANCELLED",
+                ScheduleSession.is_deleted == False,
+                Class.is_deleted == False,
+                (Class.start_date == None) | (ScheduleSession.session_date >= Class.start_date),
+                (Class.end_date == None) | (ScheduleSession.session_date <= Class.end_date)
+            ).order_by(ScheduleSession.session_date.asc(), ScheduleSession.start_time.asc()).all()
+            return [ScheduleService._format_session(s) for s in sessions]
 
         elif role == "STUDENT":
             student = db.query(Student).filter(Student.user_id == user_id, Student.is_deleted == False).first()
@@ -173,10 +187,40 @@ class ScheduleService:
             class_ids = [c[0] for c in enrolled_classes]
             if not class_ids:
                 return []
-            sessions = db.query(ScheduleSession).filter(
+            sessions = db.query(ScheduleSession).join(Class, ScheduleSession.class_id == Class.id).filter(
                 ScheduleSession.class_id.in_(class_ids),
                 ScheduleSession.status != "CANCELLED",
-                ScheduleSession.is_deleted == False
+                ScheduleSession.is_deleted == False,
+                Class.is_deleted == False,
+                (Class.start_date == None) | (ScheduleSession.session_date >= Class.start_date),
+                (Class.end_date == None) | (ScheduleSession.session_date <= Class.end_date)
+            ).order_by(ScheduleSession.session_date.asc(), ScheduleSession.start_time.asc()).all()
+            return [ScheduleService._format_session(s) for s in sessions]
+
+        elif role == "PARENT":
+            from app.modules.progression_parent.models import ParentStudent
+            wards = db.query(ParentStudent.student_id).filter(
+                ParentStudent.parent_user_id == user_id,
+                ParentStudent.is_deleted == False
+            ).all()
+            ward_ids = [w[0] for w in wards]
+            if not ward_ids:
+                return []
+            enrolled_classes = db.query(ClassStudent.class_id).filter(
+                ClassStudent.student_id.in_(ward_ids),
+                ClassStudent.status == "ENROLLED",
+                ClassStudent.is_deleted == False
+            ).all()
+            class_ids = [c[0] for c in enrolled_classes]
+            if not class_ids:
+                return []
+            sessions = db.query(ScheduleSession).join(Class, ScheduleSession.class_id == Class.id).filter(
+                ScheduleSession.class_id.in_(class_ids),
+                ScheduleSession.status != "CANCELLED",
+                ScheduleSession.is_deleted == False,
+                Class.is_deleted == False,
+                (Class.start_date == None) | (ScheduleSession.session_date >= Class.start_date),
+                (Class.end_date == None) | (ScheduleSession.session_date <= Class.end_date)
             ).order_by(ScheduleSession.session_date.asc(), ScheduleSession.start_time.asc()).all()
             return [ScheduleService._format_session(s) for s in sessions]
         

@@ -69,8 +69,9 @@ class ProgressionParentService:
             current_course_id=data.current_course_id,
             next_course_id=data.next_course_id,
             is_eligible=is_passed,
-            is_confirmed=False,
-            note=data.note or ("Đủ điều kiện do đã đạt chuẩn đầu ra khóa trước." if is_passed else "Chưa đủ điều kiện: Chưa đạt kết quả hoàn thành khóa trước.")
+            is_confirmed=is_passed,
+            confirmed_at=datetime.now(timezone.utc) if is_passed else None,
+            note=data.note or ("Đủ điều kiện do đã đạt chuẩn đầu ra khóa trước. Đã tự động xác nhận." if is_passed else "Chưa đủ điều kiện: Chưa đạt kết quả hoàn thành khóa trước.")
         )
         db.add(prog)
         db.commit()
@@ -174,8 +175,9 @@ class ProgressionParentService:
             current_course_id=current_course_id,
             next_course_id=next_course_id,
             is_eligible=is_passed,
-            is_confirmed=False,
-            note=note or ("Học viên đăng ký chuyển khóa học." + (" Đủ điều kiện do đã đạt chuẩn đầu ra khóa trước." if is_passed else " Chưa đạt điểm chuẩn đầu ra khóa tiên quyết, chờ học vụ xét duyệt."))
+            is_confirmed=is_passed,
+            confirmed_at=datetime.now(timezone.utc) if is_passed else None,
+            note=note or ("Đăng ký khóa học thành công." if is_passed else "Học viên đăng ký chuyển khóa học.")
         )
         db.add(prog)
         db.commit()
@@ -282,7 +284,7 @@ class ProgressionParentService:
         if not target_class:
             raise NotFoundException("Lớp học tiếp theo", target_class_id)
         
-        # Kiểm tra đã được xác nhận đủ điều kiện vào target_class.course_id chưa
+        # Tự động ghi nhận chuyển khóa nếu chưa có bản ghi xác nhận
         eligible_prog = db.query(CourseProgression).filter(
             CourseProgression.student_id == student_id,
             CourseProgression.next_course_id == target_class.course_id,
@@ -290,9 +292,18 @@ class ProgressionParentService:
         ).first()
 
         if not eligible_prog:
-            raise BusinessException("Học viên chưa được xác nhận đủ điều kiện nâng khóa để đăng ký lớp học này.")
+            eligible_prog = CourseProgression(
+                student_id=student_id,
+                next_course_id=target_class.course_id,
+                is_eligible=True,
+                is_confirmed=True,
+                confirmed_at=datetime.now(timezone.utc),
+                note="Tự động ghi nhận đăng ký khóa học tiếp theo"
+            )
+            db.add(eligible_prog)
+            db.commit()
 
-        # Tạo yêu cầu đăng ký
+        # Tạo yêu cầu và ghi danh trực tiếp vào lớp
         from app.modules.enrollments.service import EnrollmentService
         from app.modules.enrollments.schemas import EnrollmentCreateRequest
         return EnrollmentService.create_request(

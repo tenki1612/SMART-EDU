@@ -10,10 +10,11 @@ from app.modules.enrollments.router import router as enrollments_router
 from app.modules.schedules.router import router as schedules_router
 from app.modules.grades.router import router as grades_router
 from app.modules.progression_parent.router import router as progression_router
+from app.modules.tickets.router import router as tickets_router
 
 api_router = APIRouter()
 
-# 11 Modular Bounded Contexts
+# 12 Modular Bounded Contexts
 api_router.include_router(auth_router, prefix="/auth", tags=["01. Đăng nhập & Phân quyền (FR-01 -> FR-04)"])
 api_router.include_router(accounts_router, prefix="/accounts", tags=["02. Quản lý tài khoản (FR-05 -> FR-10)"])
 api_router.include_router(courses_router, prefix="/courses", tags=["03. Quản lý khóa học (FR-11 -> FR-17)"])
@@ -25,4 +26,5 @@ api_router.include_router(enrollments_router, prefix="/enrollments", tags=["08. 
 api_router.include_router(schedules_router, prefix="/schedules", tags=["09. Quản lý thời khóa biểu (FR-61 -> FR-68)"])
 api_router.include_router(grades_router, prefix="/grades", tags=["10. Quản lý điểm & Kết quả (FR-69 -> FR-77)"])
 api_router.include_router(progression_router, prefix="/progression", tags=["11. Chuyển khóa & Phụ huynh (FR-78 -> FR-82)"])
+api_router.include_router(tickets_router, prefix="/tickets", tags=["12. Đơn khiếu nại & Yêu cầu nội bộ"])
 

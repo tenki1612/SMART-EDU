@@ -606,13 +606,25 @@ def seed_database():
             end_date=date(2027, 3, 1),
             status="PLANNING"
         )
-        db.add_all([cls1, cls2, cls3, cls4, cls5, cls6, cls7, cls8, cls9, cls10])
+        cls11 = Class(
+            class_code="IELTS-65-PAST",
+            course_id=c1.id,
+            teacher_id=teacher_profile.id,
+            max_capacity=20,
+            current_enrolled=1,
+            opening_date=date(2026, 8, 1),
+            start_date=date(2026, 8, 15),
+            end_date=date(2026, 10, 15),
+            status="COMPLETED"
+        )
+        db.add_all([cls1, cls2, cls3, cls4, cls5, cls6, cls7, cls8, cls9, cls10, cls11])
         db.commit()
 
         # --- CLASS ENROLLMENTS (ClassStudent) ---
         print("🌱 Seeding Class Student Rosters...")
         # Enroll primary student into cls1 (Only cls1 for isolation test!)
         db.add(ClassStudent(class_id=cls1.id, student_id=student_profile.id, status="ENROLLED"))
+        db.add(ClassStudent(class_id=cls11.id, student_id=st_tuan.id, status="ENROLLED"))
 
         # Enroll other students
         db.add_all([
@@ -1036,7 +1048,17 @@ def seed_database():
             is_confirmed=False,
             note="Tự tin tương tác nhóm, ngữ âm chuẩn và ghi nhớ từ vựng rất nhanh."
         )
-        db.add_all([gr1, gr2, gr3, gr4, gr5, gr6, gr7])
+        gr_cls11 = GradeRecord(
+            class_id=cls11.id,
+            student_id=st_tuan.id,
+            attendance_score=9.0,
+            midterm_score=8.0,
+            final_score=8.5,
+            total_score=8.4,
+            result_status="PASSED",
+            is_confirmed=True
+        )
+        db.add_all([gr1, gr2, gr3, gr4, gr5, gr6, gr7, gr_cls11])
         db.commit()
 
         # --- PROGRESSION (FR-78 -> FR-80) ---
