@@ -100,11 +100,10 @@ class ScheduleService:
         cur_date = effective_start
         while cur_date <= effective_end:
             if cur_date.weekday() in data.days_of_week:
-                # Kiểm tra trùng lặp buổi học đã tồn tại cho lớp vào ngày và giờ này
+                # Kiểm tra trùng lặp buổi học đã tồn tại cho lớp vào ngày này
                 existing = db.query(ScheduleSession).filter(
                     ScheduleSession.class_id == data.class_id,
                     ScheduleSession.session_date == cur_date,
-                    ScheduleSession.start_time == data.start_time,
                     ScheduleSession.is_deleted == False
                 ).first()
                 if existing:
@@ -133,8 +132,8 @@ class ScheduleService:
                             session_date=cur_date,
                             start_time=data.start_time,
                             end_time=data.end_time,
-                            slot_name=data.slot_name,
-                            is_confirmed=False,
+                            slot_name=data.slot_name or "Ca học",
+                            is_confirmed=data.is_confirmed if data.is_confirmed is not None else False,
                             status="SCHEDULED"
                         )
                         db.add(sess)

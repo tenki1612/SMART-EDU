@@ -6,11 +6,114 @@ from app.core.permissions import require_roles, RoleEnum, get_current_user_paylo
 from app.common.response import ApiResponse
 from app.modules.classes.schemas import (
     ClassCreate, ClassUpdate, ClassResponse, ClassRosterStudentItem, AddStudentToClassRequest,
-    ClassTransferRequest, ClassTransferTargetItem
+    ClassTransferRequest, ClassTransferCreateRequest, ClassTransferRejectRequest,
+    ClassTransferItemResponse, ClassTransferDetailResponse, ClassTransferTargetItem
 )
 from app.modules.classes.service import ClassService
 
 router = APIRouter()
+
+# =========================================================================
+# CLASS TRANSFER REQUESTS (QUY TRÌNH YÊU CẦU VÀ PHÊ DUYỆT CHUYỂN LỚP)
+# (Khai báo trước /{class_id} để tránh FastAPI path collision)
+# =========================================================================
+
+@router.post("/transfer-requests", response_model=ApiResponse[ClassTransferDetailResponse], summary="Tạo yêu cầu chuyển lớp (Học viên/Học vụ)")
+def create_transfer_request(
+    data: ClassTransferCreateRequest,
+    payload: dict = Depends(get_current_user_payload),
+    db: Session = Depends(get_db),
+    _ = Depends(require_roles([RoleEnum.ADMIN, RoleEnum.ACADEMIC_STAFF, RoleEnum.STUDENT]))
+):
+    role = payload.get("role")
+    user_id = int(payload.get("sub", 0)) if "sub" in payload else payload.get("user_id")
+    student_id = data.student_id
+
+    if role == RoleEnum.STUDENT.value:
+        from app.modules.students.models import Student
+        student = db.query(Student).filter(Student.user_id == user_id, Student.is_deleted == False).first()
+        if not student:
+            raise HTTPException(status_code=404, detail="Không tìm thấy hồ sơ học viên.")
+        student_id = student.id
+    elif not student_id:
+        raise HTTPException(status_code=400, detail="Vui lòng chỉ định student_id để tạo yêu cầu chuyển lớp.")
+
+    req = ClassService.create_transfer_request(
+        db=db,
+        student_id=student_id,
+        current_class_id=data.current_class_id,
+        target_class_id=data.target_class_id,
+        reason=data.reason
+    )
+    return ApiResponse(data=req, message="Tạo yêu cầu chuyển lớp thành công. Yêu cầu đang ở trạng thái chờ phê duyệt.")
+
+@router.get("/transfer-requests", response_model=ApiResponse[List[ClassTransferItemResponse]], summary="Xem danh sách yêu cầu chuyển lớp")
+def list_transfer_requests(
+    status: Optional[str] = Query(None, description="Lọc theo trạng thái: PENDING, APPROVED, REJECTED"),
+    q: Optional[str] = Query(None, description="Tìm theo mã/tên học viên hoặc mã lớp"),
+    class_id: Optional[int] = Query(None, description="Lọc theo lớp học đích"),
+    payload: dict = Depends(get_current_user_payload),
+    db: Session = Depends(get_db),
+    _ = Depends(require_roles([RoleEnum.ADMIN, RoleEnum.ACADEMIC_STAFF, RoleEnum.STUDENT, RoleEnum.TEACHER]))
+):
+    items = ClassService.list_transfer_requests(
+        db=db,
+        user_payload=payload,
+        status=status,
+        search=q,
+        class_id=class_id
+    )
+    return ApiResponse(data=items, message="Danh sách yêu cầu chuyển lớp")
+
+@router.get("/transfer-requests/{request_id}", response_model=ApiResponse[ClassTransferDetailResponse], summary="Xem chi tiết yêu cầu chuyển lớp & thẩm định điều kiện")
+def get_transfer_request_detail(
+    request_id: int,
+    payload: dict = Depends(get_current_user_payload),
+    db: Session = Depends(get_db),
+    _ = Depends(require_roles([RoleEnum.ADMIN, RoleEnum.ACADEMIC_STAFF, RoleEnum.STUDENT, RoleEnum.TEACHER]))
+):
+    detail = ClassService.get_transfer_request_detail(
+        db=db,
+        request_id=request_id,
+        user_payload=payload
+    )
+    return ApiResponse(data=detail, message="Chi tiết yêu cầu chuyển lớp")
+
+@router.post("/transfer-requests/{request_id}/approve", response_model=ApiResponse[ClassTransferDetailResponse], summary="Phê duyệt yêu cầu chuyển lớp (Admin/Học vụ)")
+def approve_transfer_request(
+    request_id: int,
+    payload: dict = Depends(get_current_user_payload),
+    db: Session = Depends(get_db),
+    _ = Depends(require_roles([RoleEnum.ADMIN, RoleEnum.ACADEMIC_STAFF]))
+):
+    reviewer_user_id = int(payload.get("sub", 0)) if "sub" in payload else payload.get("user_id")
+    res = ClassService.approve_transfer_request(
+        db=db,
+        request_id=request_id,
+        reviewer_user_id=reviewer_user_id
+    )
+    return ApiResponse(data=res, message="Phê duyệt yêu cầu chuyển lớp thành công. Học viên đã được chuyển sang lớp mới.")
+
+@router.post("/transfer-requests/{request_id}/reject", response_model=ApiResponse[ClassTransferDetailResponse], summary="Từ chối yêu cầu chuyển lớp (Admin/Học vụ)")
+def reject_transfer_request(
+    request_id: int,
+    data: ClassTransferRejectRequest,
+    payload: dict = Depends(get_current_user_payload),
+    db: Session = Depends(get_db),
+    _ = Depends(require_roles([RoleEnum.ADMIN, RoleEnum.ACADEMIC_STAFF]))
+):
+    reviewer_user_id = int(payload.get("sub", 0)) if "sub" in payload else payload.get("user_id")
+    res = ClassService.reject_transfer_request(
+        db=db,
+        request_id=request_id,
+        reviewer_user_id=reviewer_user_id,
+        rejection_reason=data.reason
+    )
+    return ApiResponse(data=res, message="Đã từ chối yêu cầu chuyển lớp.")
+
+# =========================================================================
+# LỚP HỌC CRUD VÀ ROSTER
+# =========================================================================
 
 @router.post("/", response_model=ApiResponse[ClassResponse], summary="FR-32: Tạo lớp học")
 def create_class(
@@ -180,6 +283,7 @@ def get_transfer_targets(
     _ = Depends(require_roles([RoleEnum.ADMIN, RoleEnum.ACADEMIC_STAFF, RoleEnum.STUDENT]))
 ):
     role = payload.get("role")
+    student_id = None
     if role == RoleEnum.STUDENT.value:
         user_id = int(payload["sub"])
         from app.modules.students.models import Student
@@ -196,7 +300,9 @@ def get_transfer_targets(
         if not cs:
             raise HTTPException(status_code=403, detail="Bạn không có quyền xem thông tin chuyển lớp của lớp học này (chỉ dành cho học viên của lớp).")
 
-    targets = ClassService.get_transfer_targets(db, class_id)
+        student_id = student.id
+
+    targets = ClassService.get_transfer_targets(db, class_id, student_id=student_id)
     return ApiResponse(data=targets, message="Danh sách các lớp học hợp lệ để chuyển lớp")
 
 @router.post("/transfer", response_model=ApiResponse[dict], summary="Thực hiện chuyển lớp cho học viên")

@@ -23,7 +23,13 @@ import {
   Layers,
   ArrowRight,
   ArrowRightLeft,
-  AlertCircle
+  AlertCircle,
+  CheckCircle,
+  XCircle,
+  FileText,
+  Filter,
+  Eye,
+  Check
 } from 'lucide-react';
 
 export const ClassesView = () => {
@@ -77,6 +83,50 @@ export const ClassesView = () => {
   const [transferReason, setTransferReason] = useState('');
   const [transferSubmitting, setTransferSubmitting] = useState(false);
 
+  // Transfer Management Workflow (Admin / Academic Staff / Student)
+  const [activeTab, setActiveTab] = useState('CLASSES'); // 'CLASSES' | 'TRANSFERS'
+  const [transferRequests, setTransferRequests] = useState([]);
+  const [loadingTransfers, setLoadingTransfers] = useState(false);
+  const [transferStatusFilter, setTransferStatusFilter] = useState('');
+  const [transferSearchTerm, setTransferSearchTerm] = useState('');
+  const [selectedTransferDetail, setSelectedTransferDetail] = useState(null);
+  const [showTransferDetailModal, setShowTransferDetailModal] = useState(false);
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectReason, setRejectReason] = useState('');
+  const [actionLoading, setActionLoading] = useState(false);
+  const [myTransferRequests, setMyTransferRequests] = useState([]);
+
+  const loadTransferRequests = async () => {
+    if (!canManage) return;
+    setLoadingTransfers(true);
+    try {
+      const res = await classesApi.listTransferRequests({
+        status: transferStatusFilter || undefined,
+        q: transferSearchTerm || undefined,
+      });
+      setTransferRequests(res.data || []);
+    } catch (e) {
+      console.error(e);
+      toast.error('Lỗi tải danh sách yêu cầu chuyển lớp: ' + e.message);
+    } finally {
+      setLoadingTransfers(false);
+    }
+  };
+
+  const loadMyTransferRequests = async () => {
+    if (user?.role !== 'STUDENT') return;
+    try {
+      const res = await classesApi.listTransferRequests({});
+      setMyTransferRequests(res.data || []);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const pendingTransfersCount = useMemo(() => {
+    return transferRequests.filter((r) => r.status === 'PENDING').length;
+  }, [transferRequests]);
+
   const loadData = async () => {
     try {
       const [resCls, resTea, resCou] = await Promise.all([
@@ -96,6 +146,18 @@ export const ClassesView = () => {
   useEffect(() => {
     loadData();
   }, [searchTerm, statusFilter]);
+
+  useEffect(() => {
+    if (canManage) {
+      loadTransferRequests();
+    }
+  }, [canManage, activeTab, transferStatusFilter, transferSearchTerm]);
+
+  useEffect(() => {
+    if (user?.role === 'STUDENT') {
+      loadMyTransferRequests();
+    }
+  }, [user]);
 
   // Helper: Tự động tính ngày kết thúc từ ngày bắt đầu và thời lượng khóa học (tuần)
   const calculateEndDate = (startDateStr, courseId) => {
@@ -333,19 +395,83 @@ export const ClassesView = () => {
     }
     setTransferSubmitting(true);
     try {
-      await classesApi.transfer({
+      await classesApi.createTransferRequest({
         current_class_id: transferSourceClass.id,
         target_class_id: Number(selectedTargetId),
         reason: transferReason.trim() || undefined,
       });
-      toast.success('Chuyển lớp thành công! Bạn đã được ghi danh sang lớp mới.');
+      toast.success('Gửi yêu cầu chuyển lớp thành công! Yêu cầu đang ở trạng thái chờ Phòng Học vụ/Admin phê duyệt.');
       setShowTransferModal(false);
       setTransferSourceClass(null);
       loadData();
+      if (user?.role === 'STUDENT') {
+        loadMyTransferRequests();
+      }
     } catch (e) {
-      toast.error(e.message || 'Lỗi khi chuyển lớp');
+      toast.error(e.message || 'Lỗi khi gửi yêu cầu chuyển lớp');
     } finally {
       setTransferSubmitting(false);
+    }
+  };
+
+  const handleViewTransferDetail = async (reqId) => {
+    try {
+      const res = await classesApi.getTransferRequest(reqId);
+      setSelectedTransferDetail(res.data);
+      setShowTransferDetailModal(true);
+    } catch (e) {
+      toast.error('Không thể tải chi tiết yêu cầu chuyển lớp: ' + e.message);
+    }
+  };
+
+  const handleApproveTransfer = async (reqId) => {
+    const ok = await confirm({
+      title: 'Xác nhận phê duyệt chuyển lớp',
+      message: 'Học viên sẽ được chuyển chính thức sang lớp học mới và bảng điểm được đồng bộ bảo toàn. Bạn có chắc chắn muốn phê duyệt?',
+      confirmText: 'Phê duyệt',
+      cancelText: 'Hủy'
+    });
+    if (!ok) return;
+
+    setActionLoading(true);
+    try {
+      await classesApi.approveTransferRequest(reqId);
+      toast.success('Phê duyệt chuyển lớp thành công! Học viên đã được chuyển lớp.');
+      setShowTransferDetailModal(false);
+      loadTransferRequests();
+      loadData();
+    } catch (e) {
+      toast.error(e.message || 'Lỗi khi phê duyệt chuyển lớp');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleOpenRejectModal = (detail) => {
+    setSelectedTransferDetail(detail);
+    setRejectReason('');
+    setShowRejectModal(true);
+  };
+
+  const handleConfirmReject = async (e) => {
+    e.preventDefault();
+    if (!rejectReason.trim()) {
+      toast.warning('Vui lòng nhập lý do từ chối.');
+      return;
+    }
+    setActionLoading(true);
+    try {
+      await classesApi.rejectTransferRequest(selectedTransferDetail.id, {
+        reason: rejectReason.trim(),
+      });
+      toast.success('Đã từ chối yêu cầu chuyển lớp.');
+      setShowRejectModal(false);
+      setShowTransferDetailModal(false);
+      loadTransferRequests();
+    } catch (e) {
+      toast.error(e.message || 'Lỗi khi từ chối yêu cầu chuyển lớp');
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -414,6 +540,112 @@ export const ClassesView = () => {
         headerSlot
       )}
 
+      {/* Management View Switcher Tabs (Admin & Academic Staff) */}
+      {canManage && (
+        <div className="flex items-center gap-2 border-b border-slate-200/90 pb-3">
+          <button
+            type="button"
+            onClick={() => setActiveTab('CLASSES')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer ${
+              activeTab === 'CLASSES'
+                ? 'bg-indigo-600 text-white shadow-xs shadow-indigo-200'
+                : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200/80'
+            }`}
+          >
+            <School className="w-4 h-4" />
+            <span>Quản lý danh sách lớp học</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('TRANSFERS')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer ${
+              activeTab === 'TRANSFERS'
+                ? 'bg-indigo-600 text-white shadow-xs shadow-indigo-200'
+                : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200/80'
+            }`}
+          >
+            <ArrowRightLeft className="w-4 h-4" />
+            <span>Yêu cầu chuyển lớp</span>
+            {pendingTransfersCount > 0 && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-500 text-white animate-pulse">
+                {pendingTransfersCount}
+              </span>
+            )}
+          </button>
+        </div>
+      )}
+
+      {/* Student: My Transfer Requests Section */}
+      {user?.role === 'STUDENT' && myTransferRequests.length > 0 && (
+        <div className="bg-white p-4 sm:p-5 rounded-3xl border border-slate-200/90 shadow-2xs space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <ArrowRightLeft className="w-4 h-4 text-indigo-600" />
+              <h3 className="font-bold text-sm text-slate-800">Yêu cầu chuyển lớp của bạn</h3>
+            </div>
+            <span className="text-[11px] font-semibold text-slate-400">
+              {myTransferRequests.length} yêu cầu
+            </span>
+          </div>
+
+          <div className="grid gap-2.5">
+            {myTransferRequests.map((req) => (
+              <div
+                key={req.id}
+                className="p-3.5 rounded-2xl bg-slate-50/80 border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
+              >
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-slate-900 font-mono bg-white px-2 py-0.5 rounded border border-slate-200">
+                      {req.source_class_code}
+                    </span>
+                    <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
+                    <span className="font-bold text-indigo-700 font-mono bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
+                      {req.target_class_code}
+                    </span>
+                    <span className="text-[11px] text-slate-500">
+                      ({req.target_course_title})
+                    </span>
+                  </div>
+                  {req.reason && (
+                    <div className="text-slate-600 text-[11px]">
+                      Lý do: <span className="font-medium text-slate-800">{req.reason}</span>
+                    </div>
+                  )}
+                  {req.status === 'REJECTED' && req.rejection_reason && (
+                    <div className="text-rose-700 bg-rose-50 border border-rose-100 p-2 rounded-xl text-[11px] font-medium">
+                      Lý do từ chối: <strong>{req.rejection_reason}</strong>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 self-start sm:self-auto">
+                  {req.status === 'PENDING' && (
+                    <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1">
+                      <Clock className="w-3 h-3" /> Chờ phê duyệt
+                    </span>
+                  )}
+                  {req.status === 'APPROVED' && (
+                    <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3" /> Đã phê duyệt
+                    </span>
+                  )}
+                  {req.status === 'REJECTED' && (
+                    <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200 flex items-center gap-1">
+                      <X className="w-3 h-3" /> Bị từ chối
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Main Classes Tab */}
+      {activeTab === 'CLASSES' && (
+        <>
       {/* KPI Metric Overview */}
       {user?.role !== 'STUDENT' && (
         <div className={`grid gap-3.5 sm:gap-4 ${isTeacher ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-2 lg:grid-cols-4'}`}>
@@ -735,6 +967,175 @@ export const ClassesView = () => {
           </table>
         </div>
       </div>
+      </>
+      )}
+
+      {/* ================= SECTION: QUẢN LÝ YÊU CẦU CHUYỂN LỚP (ADMIN / ACADEMIC_STAFF) ================= */}
+      {canManage && activeTab === 'TRANSFERS' && (
+        <div className="space-y-4">
+          {/* Transfer Requests Filter Bar */}
+          <div className="bg-white p-3.5 rounded-3xl border border-slate-200/90 shadow-2xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 flex-1 bg-slate-50/80 border border-slate-200/80 rounded-2xl px-3.5 py-2">
+              <Search className="w-4 h-4 text-slate-400 shrink-0" />
+              <input
+                type="text"
+                placeholder="Tìm theo mã học viên, tên học viên, mã lớp nguồn/đích..."
+                value={transferSearchTerm}
+                onChange={(e) => setTransferSearchTerm(e.target.value)}
+                className="w-full text-xs outline-hidden text-slate-800 placeholder:text-slate-400 bg-transparent font-medium"
+              />
+              {transferSearchTerm && (
+                <button
+                  type="button"
+                  onClick={() => setTransferSearchTerm('')}
+                  className="text-slate-400 hover:text-slate-600 cursor-pointer p-0.5"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 shrink-0">
+              {[
+                { id: '', label: 'Tất cả' },
+                { id: 'PENDING', label: 'Chờ phê duyệt' },
+                { id: 'APPROVED', label: 'Đã phê duyệt' },
+                { id: 'REJECTED', label: 'Đã từ chối' },
+              ].map((st) => {
+                const isSelected = transferStatusFilter === st.id;
+                return (
+                  <button
+                    key={st.id}
+                    type="button"
+                    onClick={() => setTransferStatusFilter(st.id)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                      isSelected
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200/70'
+                    }`}
+                  >
+                    {st.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Transfer Requests Table */}
+          <div className="bg-white rounded-3xl border border-slate-200/90 overflow-hidden shadow-2xs">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50/80 border-b border-slate-200/80 font-bold text-slate-600 uppercase tracking-wider text-[11px]">
+                  <tr>
+                    <th className="py-3 px-4">Mã đơn</th>
+                    <th className="py-3 px-4">Học viên</th>
+                    <th className="py-3 px-4">Lớp hiện tại</th>
+                    <th className="py-3 px-4">Lớp muốn chuyển</th>
+                    <th className="py-3 px-4">Cấp độ</th>
+                    <th className="py-3 px-4">Ngày gửi</th>
+                    <th className="py-3 px-4">Trạng thái</th>
+                    <th className="py-3 px-4 text-right">Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-slate-700 font-medium">
+                  {loadingTransfers ? (
+                    <tr>
+                      <td colSpan={8} className="py-12 text-center text-slate-400">
+                        Đang tải danh sách yêu cầu chuyển lớp...
+                      </td>
+                    </tr>
+                  ) : transferRequests.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="py-12 text-center text-slate-400">
+                        Không có yêu cầu chuyển lớp nào phù hợp.
+                      </td>
+                    </tr>
+                  ) : (
+                    transferRequests.map((req) => (
+                      <tr key={req.id} className="hover:bg-slate-50/60 transition">
+                        <td className="py-3 px-4 font-mono font-bold text-slate-900">
+                          #{req.id}
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="font-bold text-slate-900">{req.student_name}</div>
+                          <div className="text-[11px] font-mono text-slate-400">{req.student_code}</div>
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className="font-mono font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded">
+                            {req.source_class_code}
+                          </span>
+                          <div className="text-[11px] text-slate-500 mt-0.5">{req.source_course_title}</div>
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className="font-mono font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
+                            {req.target_class_code}
+                          </span>
+                          <div className="text-[11px] text-slate-500 mt-0.5">{req.target_course_title}</div>
+                        </td>
+                        <td className="py-3 px-4">
+                          {req.level_relation === 'SAME_LEVEL' && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-100">
+                              Cùng cấp độ
+                            </span>
+                          )}
+                          {req.level_relation === 'HIGHER_LEVEL' && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-100">
+                              Lên cấp độ
+                            </span>
+                          )}
+                          {req.level_relation === 'LOWER_LEVEL' && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-100">
+                              Xuống cấp độ
+                            </span>
+                          )}
+                          {req.level_relation === 'UNKNOWN_LEVEL' && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600">
+                              Chưa xác định
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-slate-500 text-[11px]">
+                          {new Date(req.request_date).toLocaleString('vi-VN', {
+                            day: '2-digit', month: '2-digit', year: 'numeric',
+                            hour: '2-digit', minute: '2-digit'
+                          })}
+                        </td>
+                        <td className="py-3 px-4">
+                          {req.status === 'PENDING' && (
+                            <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                              Chờ phê duyệt
+                            </span>
+                          )}
+                          {req.status === 'APPROVED' && (
+                            <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              Đã phê duyệt
+                            </span>
+                          )}
+                          {req.status === 'REJECTED' && (
+                            <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                              Đã từ chối
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          <button
+                            type="button"
+                            onClick={() => handleViewTransferDetail(req.id)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 transition cursor-pointer"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>Thẩm định & Chi tiết</span>
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ================= MODAL: THÊM LỚP HỌC MỚI ================= */}
       {showAddModal && createPortal(
@@ -1101,7 +1502,7 @@ export const ClassesView = () => {
         document.body
       )}
 
-      {/* ================= MODAL: CHUYỂN LỚP (TRANSFER CLASS) ================= */}
+      {/* ================= MODAL: TẠO YÊU CẦU CHUYỂN LỚP (STUDENT) ================= */}
       {showTransferModal && transferSourceClass && createPortal(
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-7 shadow-2xl border border-slate-200">
@@ -1111,7 +1512,7 @@ export const ClassesView = () => {
                   <ArrowRightLeft className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-extrabold text-base text-slate-900">Chuyển lớp học</h3>
+                  <h3 className="font-extrabold text-base text-slate-900">Tạo yêu cầu chuyển lớp</h3>
                   <p className="text-xs text-slate-500 font-medium mt-0.5">
                     Lớp hiện tại: <span className="font-mono font-bold text-indigo-700">{transferSourceClass.class_code}</span>
                   </p>
@@ -1160,11 +1561,12 @@ export const ClassesView = () => {
                   <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
                     {transferTargets.map((target) => {
                       const isFull = target.is_full || (target.max_capacity - (target.current_enrolled || 0)) <= 0;
+                      const isBlocked = isFull || target.is_eligible === false;
                       return (
                         <label
                           key={target.id}
                           className={`block p-3 rounded-2xl border transition ${
-                            isFull
+                            isBlocked
                               ? 'border-slate-200 bg-slate-50/80 opacity-60 cursor-not-allowed'
                               : selectedTargetId === String(target.id)
                               ? 'border-indigo-600 bg-indigo-50/60 ring-2 ring-indigo-100 cursor-pointer'
@@ -1177,9 +1579,9 @@ export const ClassesView = () => {
                                 type="radio"
                                 name="target_class"
                                 value={target.id}
-                                disabled={isFull}
+                                disabled={isBlocked}
                                 checked={selectedTargetId === String(target.id)}
-                                onChange={() => !isFull && setSelectedTargetId(String(target.id))}
+                                onChange={() => !isBlocked && setSelectedTargetId(String(target.id))}
                                 className="text-indigo-600 focus:ring-indigo-500 disabled:opacity-40"
                               />
                               <span className="font-mono font-bold text-slate-900 text-xs">{target.class_code}</span>
@@ -1187,20 +1589,43 @@ export const ClassesView = () => {
                                 {target.course_title}
                               </span>
                             </div>
-                            {isFull ? (
-                              <span className="text-[11px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">
-                                Hết chỗ ({target.current_enrolled || 0}/{target.max_capacity})
-                              </span>
-                            ) : (
-                              <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                                Còn {target.max_capacity - (target.current_enrolled || 0)} chỗ
-                              </span>
-                            )}
+                            <div className="flex items-center gap-1.5">
+                              {target.level_relation === 'SAME_LEVEL' && (
+                                <span className="text-[10px] font-bold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full border border-indigo-100">
+                                  Cùng cấp độ
+                                </span>
+                              )}
+                              {target.level_relation === 'HIGHER_LEVEL' && (
+                                <span className="text-[10px] font-bold bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full border border-purple-100">
+                                  Lên cấp độ
+                                </span>
+                              )}
+                              {target.level_relation === 'LOWER_LEVEL' && (
+                                <span className="text-[10px] font-bold bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full border border-amber-100">
+                                  Xuống cấp độ
+                                </span>
+                              )}
+                              {isFull ? (
+                                <span className="text-[11px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">
+                                  Hết chỗ ({target.current_enrolled || 0}/{target.max_capacity})
+                                </span>
+                              ) : (
+                                <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                                  Còn {target.max_capacity - (target.current_enrolled || 0)} chỗ
+                                </span>
+                              )}
+                            </div>
                           </div>
                           <div className="mt-2 text-[11px] text-slate-600 pl-5 space-y-0.5">
                             <div>GV mới: <strong className="text-slate-800">{target.teacher_name || 'Khác GV hiện tại'}</strong></div>
                             {target.schedule_summary && (
                               <div className="text-indigo-700 font-medium">Lịch học: {target.schedule_summary}</div>
+                            )}
+                            {target.is_eligible === false && target.ineligible_reason && (
+                              <div className="text-rose-600 font-bold mt-1 text-[11px] flex items-center gap-1">
+                                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                                <span>{target.ineligible_reason}</span>
+                              </div>
                             )}
                           </div>
                         </label>
@@ -1224,6 +1649,11 @@ export const ClassesView = () => {
                 />
               </div>
 
+              {/* Notice */}
+              <div className="p-3 bg-indigo-50/70 border border-indigo-100 rounded-2xl text-[11px] text-indigo-900 leading-relaxed">
+                <strong>Lưu ý:</strong> Yêu cầu chuyển lớp sẽ được gửi đến Phòng Học vụ/Admin thẩm định và phê duyệt. Hệ thống không tự động chuyển lớp ngay.
+              </div>
+
               {/* Action Buttons */}
               <div className="pt-2 flex items-center justify-end gap-2.5">
                 <button
@@ -1238,7 +1668,228 @@ export const ClassesView = () => {
                   disabled={transferSubmitting || !selectedTargetId || transferTargets.length === 0}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs shadow-indigo-200 transition cursor-pointer disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed"
                 >
-                  {transferSubmitting ? 'Đang chuyển...' : 'Xác nhận chuyển lớp'}
+                  {transferSubmitting ? 'Đang gửi yêu cầu...' : 'Gửi yêu cầu chuyển lớp'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ================= MODAL: THẨM ĐỊNH & CHI TIẾT YÊU CẦU CHUYỂN LỚP (ADMIN / ACADEMIC_STAFF) ================= */}
+      {showTransferDetailModal && selectedTransferDetail && createPortal(
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-7 shadow-2xl border border-slate-200 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-base text-slate-900">
+                    Thẩm định yêu cầu chuyển lớp #{selectedTransferDetail.id}
+                  </h3>
+                  <p className="text-xs text-slate-500 font-medium">
+                    Học viên: <strong className="text-slate-800">{selectedTransferDetail.student_name}</strong> ({selectedTransferDetail.student_code})
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowTransferDetailModal(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="mt-5 space-y-4 text-xs">
+              {/* Student & Class Cards Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                {/* Source Class */}
+                <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-1.5">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Lớp hiện tại (Nguồn)</div>
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono font-bold text-slate-900 text-sm">{selectedTransferDetail.source_class_code}</span>
+                    <span className="text-[10px] bg-slate-200/70 text-slate-700 px-2 py-0.5 rounded font-semibold">
+                      {selectedTransferDetail.source_target_level || 'Cấp độ'}
+                    </span>
+                  </div>
+                  <div className="text-slate-600">Khóa: <strong>{selectedTransferDetail.source_course_title}</strong></div>
+                  <div className="text-slate-600">Giảng viên: <strong>{selectedTransferDetail.source_teacher_name || 'Chưa phân công'}</strong></div>
+                </div>
+
+                {/* Target Class */}
+                <div className="p-3.5 bg-indigo-50/60 rounded-2xl border border-indigo-100 space-y-1.5">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-indigo-500">Lớp muốn chuyển (Đích)</div>
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono font-bold text-indigo-900 text-sm">{selectedTransferDetail.target_class_code}</span>
+                    <span className="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded font-semibold">
+                      {selectedTransferDetail.target_target_level || 'Cấp độ'}
+                    </span>
+                  </div>
+                  <div className="text-slate-700">Khóa: <strong>{selectedTransferDetail.target_course_title}</strong></div>
+                  <div className="text-slate-700">Giảng viên: <strong>{selectedTransferDetail.target_teacher_name || 'Chưa phân công'}</strong></div>
+                  <div className="flex items-center justify-between pt-1 border-t border-indigo-100/60 text-[11px]">
+                    <span>Sĩ số: <strong>{selectedTransferDetail.target_current_enrolled}/{selectedTransferDetail.target_max_capacity}</strong></span>
+                    <span className="font-bold text-emerald-700">Còn {selectedTransferDetail.target_available_slots} chỗ trống</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Transfer Reason */}
+              {selectedTransferDetail.reason && (
+                <div className="p-3.5 bg-slate-50/90 rounded-2xl border border-slate-200/80">
+                  <span className="font-bold text-slate-700 block mb-1">Lý do học viên xin chuyển:</span>
+                  <p className="text-slate-800 italic">{selectedTransferDetail.reason}</p>
+                </div>
+              )}
+
+              {/* Automated Condition Checklist */}
+              <div>
+                <h4 className="font-black text-slate-900 text-xs mb-2 flex items-center gap-1.5">
+                  <CheckCircle className="w-4 h-4 text-indigo-600" />
+                  <span>Kết quả thẩm định điều kiện tự động</span>
+                </h4>
+                <div className="divide-y divide-slate-100 border border-slate-200/90 rounded-2xl overflow-hidden bg-white">
+                  {selectedTransferDetail.checklist && selectedTransferDetail.checklist.length > 0 ? (
+                    selectedTransferDetail.checklist.map((item, idx) => (
+                      <div key={idx} className="p-3 flex items-start justify-between gap-3 text-xs hover:bg-slate-50/60 transition">
+                        <div className="space-y-0.5">
+                          <div className="font-bold text-slate-900">{item.name}</div>
+                          <div className="text-slate-600 text-[11px]">{item.message}</div>
+                        </div>
+                        <div className="shrink-0">
+                          {item.passed ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              <Check className="w-3 h-3 text-emerald-600" /> ĐẠT
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                              <X className="w-3 h-3 text-rose-600" /> KHÔNG ĐẠT
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="p-4 text-center text-slate-400 text-xs">Không có dữ liệu checklist thẩm định.</div>
+                  )}
+                </div>
+              </div>
+
+              {/* Status & Review Audit */}
+              {selectedTransferDetail.status !== 'PENDING' && (
+                <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 text-xs space-y-1">
+                  <div className="font-bold text-slate-800">
+                    Trạng thái: {selectedTransferDetail.status === 'APPROVED' ? 'ĐÃ PHÊ DUYỆT' : 'ĐÃ TỪ CHỐI'}
+                  </div>
+                  {selectedTransferDetail.reviewer_name && (
+                    <div className="text-slate-600">
+                      Người duyệt: <strong>{selectedTransferDetail.reviewer_name}</strong> &bull; {new Date(selectedTransferDetail.reviewed_at).toLocaleString('vi-VN')}
+                    </div>
+                  )}
+                  {selectedTransferDetail.status === 'REJECTED' && selectedTransferDetail.rejection_reason && (
+                    <div className="text-rose-700 bg-rose-50 border border-rose-100 p-2 rounded-xl text-xs font-semibold mt-1">
+                      Lý do từ chối: {selectedTransferDetail.rejection_reason}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Action Buttons */}
+            <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setShowTransferDetailModal(false)}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+              >
+                Đóng
+              </button>
+
+              {selectedTransferDetail.status === 'PENDING' && (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={actionLoading}
+                    onClick={() => handleOpenRejectModal(selectedTransferDetail)}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition cursor-pointer disabled:opacity-50"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                    <span>Từ chối</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={actionLoading || !selectedTransferDetail.can_approve}
+                    onClick={() => handleApproveTransfer(selectedTransferDetail.id)}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs shadow-emerald-200 transition cursor-pointer disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed"
+                  >
+                    <CheckCircle className="w-3.5 h-3.5" />
+                    <span>{actionLoading ? 'Đang xử lý...' : 'Phê duyệt chuyển lớp'}</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ================= MODAL: TỪ CHỐI YÊU CẦU CHUYỂN LỚP (BẮT BUỘC LÝ DO) ================= */}
+      {showRejectModal && selectedTransferDetail && createPortal(
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center font-bold">
+                  <X className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-base text-slate-900">Từ chối chuyển lớp</h3>
+                  <span className="text-xs text-slate-400">Yêu cầu #{selectedTransferDetail.id}</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowRejectModal(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmReject} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Lý do từ chối <span className="text-rose-500">*</span>
+                </label>
+                <textarea
+                  required
+                  rows={3}
+                  value={rejectReason}
+                  onChange={(e) => setRejectReason(e.target.value)}
+                  placeholder="Nhập lý do cụ thể gửi đến học viên (ví dụ: Lớp đích không phù hợp lộ trình học, lịch học xung đột...)"
+                  className="w-full text-xs p-3 rounded-2xl border border-slate-200 focus:border-rose-500 focus:ring-2 focus:ring-rose-100 outline-none text-slate-800 font-medium"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowRejectModal(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={actionLoading || !rejectReason.trim()}
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-xs shadow-rose-200 transition cursor-pointer disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed"
+                >
+                  {actionLoading ? 'Đang lưu...' : 'Xác nhận từ chối'}
                 </button>
               </div>
             </form>

@@ -65,8 +65,15 @@ export const SchedulesView = () => {
 
   // Modals
   const [showAddModal, setShowAddModal] = useState(false);
+  const [addMode, setAddMode] = useState('single'); // 'single' | 'recurring'
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingSession, setEditingSession] = useState(null);
+
+  // Monthly Calendar Navigation
+  const [currentMonth, setCurrentMonth] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
 
   // Form states
   const [addForm, setAddForm] = useState({
@@ -77,6 +84,20 @@ export const SchedulesView = () => {
     start_time: '18:00',
     end_time: '20:00',
     slot_name: 'Ca tối (18:00 - 20:00)',
+  });
+
+  // Recurring Form state for whole semester / class period
+  const [recurringForm, setRecurringForm] = useState({
+    class_id: '',
+    classroom_id: '',
+    teacher_id: '',
+    days_of_week: [0, 2], // 0=T2, 2=T4 default
+    start_time: '18:00',
+    end_time: '20:00',
+    slot_name: 'Ca tối (18:00 - 20:00)',
+    start_date: '',
+    end_date: '',
+    is_confirmed: true,
   });
 
   const [editForm, setEditForm] = useState({
@@ -328,6 +349,121 @@ export const SchedulesView = () => {
     setCurrentWeekStart(monday);
   };
 
+  // Navigation handlers for month
+  const handlePrevMonth = () => {
+    setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
+  };
+
+  const handleNextMonth = () => {
+    setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
+  };
+
+  const handleCurrentMonth = () => {
+    const now = new Date();
+    setCurrentMonth(new Date(now.getFullYear(), now.getMonth(), 1));
+  };
+
+  // Month title e.g. "Tháng 11/2026"
+  const monthTitle = useMemo(() => {
+    const m = currentMonth.getMonth() + 1;
+    const y = currentMonth.getFullYear();
+    return `Tháng ${m < 10 ? '0' + m : m}/${y}`;
+  }, [currentMonth]);
+
+  // Compute days matrix for current month (42 cells: 6 weeks x 7 days)
+  const monthDays = useMemo(() => {
+    const year = currentMonth.getFullYear();
+    const month = currentMonth.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const dayOfWeek = firstDay.getDay(); // 0 is Sun
+    const startOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    const startDate = new Date(year, month, 1 + startOffset);
+    startDate.setHours(0, 0, 0, 0);
+
+    const cells = [];
+    for (let i = 0; i < 42; i++) {
+      const d = new Date(startDate);
+      d.setDate(startDate.getDate() + i);
+      const isCurrentMonth = d.getMonth() === month;
+      cells.push({
+        date: d,
+        dateStr: toLocalDateStr(d),
+        dayNum: d.getDate(),
+        isCurrentMonth,
+        isToday: toLocalDateStr(d) === todayStr,
+      });
+    }
+    return cells;
+  }, [currentMonth, todayStr]);
+
+  // List of all months spanning the semester
+  const semesterMonths = useMemo(() => {
+    if (!semesterInfo.minDate || !semesterInfo.maxDate) return [];
+    const start = new Date(semesterInfo.minDate + 'T00:00:00');
+    const end = new Date(semesterInfo.maxDate + 'T00:00:00');
+    const months = [];
+    let cur = new Date(start.getFullYear(), start.getMonth(), 1);
+    const endLimit = new Date(end.getFullYear(), end.getMonth() + 1, 1);
+    while (cur < endLimit) {
+      const y = cur.getFullYear();
+      const m = cur.getMonth();
+      const value = `${y}-${String(m + 1).padStart(2, '0')}`;
+      const label = `Tháng ${String(m + 1).padStart(2, '0')}/${y}`;
+      months.push({ value, label, year: y, month: m });
+      cur.setMonth(cur.getMonth() + 1);
+    }
+    return months;
+  }, [semesterInfo]);
+
+  // Catch-all sessions for weekly grid that don't match any standard TIME_SLOTS
+  const unslottedWeekSessions = useMemo(() => {
+    const weekDateStrs = new Set(weekDays.map(d => toLocalDateStr(d)));
+    return filteredSchedules.filter(s => {
+      if (!weekDateStrs.has(s.session_date)) return false;
+      const matchesAnySlot = TIME_SLOTS.some(slot => s.start_time < slot.end && s.end_time > slot.start);
+      return !matchesAnySlot;
+    });
+  }, [filteredSchedules, weekDays, TIME_SLOTS]);
+
+  // Create Recurring schedule
+  const handleCreateRecurring = async (e) => {
+    e.preventDefault();
+    if (!recurringForm.class_id) {
+      toast.error('Vui lòng chọn lớp học.');
+      return;
+    }
+    if (!recurringForm.days_of_week.length) {
+      toast.error('Vui lòng chọn ít nhất một thứ trong tuần.');
+      return;
+    }
+    try {
+      const res = await schedulesApi.createRecurring({
+        class_id: Number(recurringForm.class_id),
+        classroom_id: Number(recurringForm.classroom_id || 1),
+        teacher_id: Number(recurringForm.teacher_id || 1),
+        days_of_week: recurringForm.days_of_week,
+        start_time: recurringForm.start_time,
+        end_time: recurringForm.end_time,
+        slot_name: recurringForm.slot_name,
+        start_date: recurringForm.start_date || undefined,
+        end_date: recurringForm.end_date || undefined,
+        is_confirmed: recurringForm.is_confirmed,
+      });
+      const info = res.data;
+      toast.success(`Tạo thành công ${info.created_count} buổi học (${info.start_date} đến ${info.end_date})!`);
+      if (info.skipped_count > 0) {
+        toast.info(`Đã bỏ qua ${info.skipped_count} buổi học đã tồn tại trước đó.`);
+      }
+      if (info.conflicts_count > 0) {
+        toast.warning(`Có ${info.conflicts_count} buổi bị bỏ qua do xung đột phòng/giáo viên.`);
+      }
+      setShowAddModal(false);
+      loadData();
+    } catch (err) {
+      toast.error(err.message || 'Lỗi khi tạo lịch lặp lại');
+    }
+  };
+
   // Conflict check standalone form
   const handleTestConflict = async (e) => {
     e.preventDefault();
@@ -542,6 +678,17 @@ export const SchedulesView = () => {
               }`}
             >
               <LayoutGrid className="w-3.5 h-3.5" /> Bảng tuần
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('month')}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                viewMode === 'month'
+                  ? 'bg-white text-indigo-700 shadow-2xs font-extrabold'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Calendar className="w-3.5 h-3.5" /> Lịch tháng
             </button>
             <button
               type="button"
@@ -978,8 +1125,237 @@ export const SchedulesView = () => {
                       })}
                     </tr>
                   ))}
+                  {/* Additional row for any sessions with non-standard time slot */}
+                  {unslottedWeekSessions.length > 0 && (
+                    <tr className="hover:bg-amber-50/20 transition bg-amber-50/10">
+                      <td className="p-3 bg-amber-50/60 border-r border-slate-200 text-center font-bold text-amber-800 align-top">
+                        <div className="font-mono text-xs text-amber-800">Khung giờ khác</div>
+                        <div className="text-[10px] text-amber-600 font-medium mt-0.5">Linh hoạt</div>
+                      </td>
+                      {weekDays.map((d, dayIdx) => {
+                        const dateStr = toLocalDateStr(d);
+                        const isToday = dateStr === todayStr;
+                        const cellSessions = unslottedWeekSessions.filter(s => s.session_date === dateStr);
+
+                        return (
+                          <td
+                            key={dayIdx}
+                            className={`p-2 border-r border-slate-100 last:border-r-0 align-top h-32 ${
+                              isToday ? 'bg-indigo-50/15' : ''
+                            }`}
+                          >
+                            <div className="space-y-2 h-full flex flex-col">
+                              {cellSessions.map(session => {
+                                const isPast = session.session_date < todayStr;
+                                const isCancelled = session.status === 'CANCELLED';
+
+                                return (
+                                  <div
+                                    key={session.id}
+                                    className={`p-2.5 rounded-xl border text-xs shadow-2xs transition-all relative group ${
+                                      isCancelled
+                                        ? 'bg-slate-100 border-slate-300 opacity-60 text-slate-500'
+                                        : isPast
+                                        ? 'bg-slate-50 border-slate-200 text-slate-700'
+                                        : 'bg-amber-50/80 border-amber-200 text-amber-950 hover:border-amber-400 hover:shadow-xs'
+                                    }`}
+                                  >
+                                    <div className="flex items-start justify-between gap-1 mb-1.5">
+                                      <span className="font-extrabold text-amber-800 text-[11px] leading-tight font-mono">
+                                        {session.class_code}
+                                      </span>
+                                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full border bg-amber-100 text-amber-800 border-amber-200 font-bold">
+                                        {session.slot_name || 'Buổi học'}
+                                      </span>
+                                    </div>
+                                    <div className="space-y-1 text-[11px] text-slate-600">
+                                      <div className="flex items-center gap-1">
+                                        <Clock className="w-3 h-3 text-amber-600" />
+                                        <span className="font-mono">{session.start_time} - {session.end_time}</span>
+                                      </div>
+                                      <div className="flex items-center gap-1 font-semibold text-amber-800">
+                                        <MapPin className="w-3 h-3 text-amber-600" />
+                                        <span>{session.room_code}</span>
+                                      </div>
+                                      <div className="flex items-center gap-1 text-slate-700">
+                                        <UserCheck className="w-3 h-3 text-indigo-500" />
+                                        <span className="truncate">{session.teacher_name}</span>
+                                      </div>
+                                    </div>
+                                    {canManage && (
+                                      <div className="mt-2 pt-1.5 border-t border-slate-200/80 flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition">
+                                        <button
+                                          onClick={() => handleOpenEdit(session)}
+                                          className="p-1 text-slate-600 hover:text-indigo-600 hover:bg-white rounded transition cursor-pointer"
+                                          title="Sửa buổi học"
+                                        >
+                                          <Edit2 className="w-3 h-3" />
+                                        </button>
+                                        <button
+                                          onClick={() => handleCancelSession(session.id)}
+                                          className="p-1 text-slate-600 hover:text-amber-600 hover:bg-white rounded transition cursor-pointer"
+                                          title="Hủy buổi học"
+                                        >
+                                          <Ban className="w-3 h-3" />
+                                        </button>
+                                        <button
+                                          onClick={() => handleDeleteSession(session.id)}
+                                          className="p-1 text-slate-600 hover:text-rose-600 hover:bg-white rounded transition cursor-pointer"
+                                          title="Xóa buổi học"
+                                        >
+                                          <Trash2 className="w-3 h-3" />
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  )}
                 </tbody>
               </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Timetable Monthly Calendar View */}
+      {viewMode === 'month' && (
+        <div className="space-y-3">
+          {/* Month Navigation bar */}
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-white px-4 py-3 rounded-2xl border border-slate-200/90 shadow-2xs">
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                onClick={handlePrevMonth}
+                className="p-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 cursor-pointer transition"
+                title="Tháng trước"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <button
+                onClick={handleCurrentMonth}
+                className="px-3 py-1 rounded-xl text-xs font-bold border border-slate-200 hover:bg-slate-50 text-slate-700 cursor-pointer transition"
+              >
+                Tháng này
+              </button>
+              <button
+                onClick={handleNextMonth}
+                className="p-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 cursor-pointer transition"
+                title="Tháng sau"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+
+              {/* Month Quick Select */}
+              {semesterMonths.length > 0 && (
+                <div className="flex items-center gap-1.5 ml-1">
+                  <select
+                    value={`${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, '0')}`}
+                    onChange={(e) => {
+                      const [y, m] = e.target.value.split('-').map(Number);
+                      setCurrentMonth(new Date(y, m - 1, 1));
+                    }}
+                    className="text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1 text-slate-700 outline-none hover:bg-slate-100 cursor-pointer"
+                  >
+                    {semesterMonths.map(m => (
+                      <option key={m.value} value={m.value}>
+                        {m.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+
+            <div className="font-extrabold text-sm text-slate-800 tracking-tight flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-indigo-600" />
+              <span>{monthTitle}</span>
+            </div>
+          </div>
+
+          {/* Month Calendar Grid */}
+          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-hidden">
+            <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50 text-center text-xs font-bold text-slate-600">
+              {['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ Nhật'].map((dayName, idx) => (
+                <div key={idx} className="py-2.5 border-r border-slate-200 last:border-r-0 uppercase text-[11px] tracking-wider">
+                  {dayName}
+                </div>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-7 auto-rows-fr divide-x divide-y divide-slate-100 text-xs">
+              {monthDays.map((cell, idx) => {
+                const cellSessions = filteredSchedules.filter(s => s.session_date === cell.dateStr);
+
+                return (
+                  <div
+                    key={idx}
+                    className={`min-h-[110px] p-1.5 flex flex-col transition ${
+                      !cell.isCurrentMonth
+                        ? 'bg-slate-50/50 text-slate-300'
+                        : cell.isToday
+                        ? 'bg-indigo-50/20 text-slate-800'
+                        : 'bg-white text-slate-800 hover:bg-slate-50/30'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span
+                        className={`text-xs font-bold inline-flex items-center justify-center w-6 h-6 rounded-full ${
+                          cell.isToday
+                            ? 'bg-indigo-600 text-white font-extrabold shadow-xs'
+                            : !cell.isCurrentMonth
+                            ? 'text-slate-400 font-medium'
+                            : 'text-slate-700'
+                        }`}
+                      >
+                        {cell.dayNum}
+                      </span>
+                      {cellSessions.length > 0 && cell.isCurrentMonth && (
+                        <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-indigo-50 text-indigo-700 font-bold border border-indigo-100">
+                          {cellSessions.length} buổi
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="space-y-1 overflow-y-auto max-h-[120px] flex-1">
+                      {cellSessions.map(session => {
+                        const isPast = session.session_date < todayStr;
+                        const isCancelled = session.status === 'CANCELLED';
+
+                        return (
+                          <div
+                            key={session.id}
+                            onClick={() => canManage && handleOpenEdit(session)}
+                            className={`p-1.5 rounded-lg border text-[11px] transition-all cursor-pointer ${
+                              isCancelled
+                                ? 'bg-slate-100 border-slate-200 text-slate-400 opacity-60 line-through'
+                                : isPast
+                                ? 'bg-slate-50 border-slate-200 text-slate-600 hover:border-slate-300'
+                                : 'bg-indigo-50/70 border-indigo-200/80 text-indigo-950 hover:bg-indigo-100 hover:border-indigo-400'
+                            }`}
+                            title={`${session.class_code} - ${session.course_title} | ${session.start_time}-${session.end_time} | ${session.room_code} | GV: ${session.teacher_name}`}
+                          >
+                            <div className="flex items-center justify-between gap-1 font-bold">
+                              <span className="truncate text-indigo-800 font-mono text-[10px]">{session.class_code}</span>
+                              <span className="shrink-0 text-[10px] font-mono font-semibold">{session.start_time}</span>
+                            </div>
+                            <div className="text-[10px] text-slate-500 truncate flex items-center gap-1 mt-0.5">
+                              <MapPin className="w-2.5 h-2.5 shrink-0 text-slate-400" />
+                              <span>{session.room_code}</span>
+                              <span className="text-slate-300">•</span>
+                              <span className="truncate">{session.teacher_name}</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -1178,139 +1554,384 @@ export const SchedulesView = () => {
               </button>
             </div>
 
-            <form onSubmit={handleCreateSession} className="space-y-3.5 text-xs">
-              <div>
-                <label className="font-bold text-slate-700 block mb-1">Chọn Lớp học:</label>
-                <select
-                  required
-                  value={addForm.class_id}
-                  onChange={(e) => setAddForm({ ...addForm, class_id: e.target.value })}
-                  className="w-full border border-slate-300 p-2.5 rounded-xl bg-white font-medium outline-hidden focus:border-indigo-600"
-                >
-                  <option value="">-- Chọn lớp học --</option>
-                  {classesList.map(c => (
-                    <option key={c.id} value={c.id}>
-                      {c.class_code} - {c.course_title} ({c.current_enrolled}/{c.max_capacity} HV)
-                    </option>
-                  ))}
-                </select>
-              </div>
+            {/* Chế độ thêm: Đơn lẻ vs Lặp lại cả khóa */}
+            <div className="flex bg-slate-100 p-1 rounded-2xl mb-4 border border-slate-200">
+              <button
+                type="button"
+                onClick={() => setAddMode('single')}
+                className={`flex-1 py-2 text-xs font-bold rounded-xl transition cursor-pointer ${
+                  addMode === 'single'
+                    ? 'bg-white text-indigo-700 shadow-2xs font-black'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Buổi học đơn lẻ
+              </button>
+              <button
+                type="button"
+                onClick={() => setAddMode('recurring')}
+                className={`flex-1 py-2 text-xs font-bold rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                  addMode === 'recurring'
+                    ? 'bg-white text-indigo-700 shadow-2xs font-black'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Lịch lặp lại cả khóa</span>
+              </button>
+            </div>
 
-              <div className="grid grid-cols-2 gap-3">
+            {/* FORM 1: BUỔI ĐƠN LẺ */}
+            {addMode === 'single' && (
+              <form onSubmit={handleCreateSession} className="space-y-3.5 text-xs">
                 <div>
-                  <label className="font-bold text-slate-700 block mb-1">Phòng học:</label>
+                  <label className="font-bold text-slate-700 block mb-1">Chọn Lớp học:</label>
                   <select
                     required
-                    value={addForm.classroom_id}
-                    onChange={(e) => setAddForm({ ...addForm, classroom_id: e.target.value })}
+                    value={addForm.class_id}
+                    onChange={(e) => setAddForm({ ...addForm, class_id: e.target.value })}
                     className="w-full border border-slate-300 p-2.5 rounded-xl bg-white font-medium outline-hidden focus:border-indigo-600"
                   >
-                    {classrooms.map(r => (
-                      <option key={r.id} value={r.id}>
-                        {r.room_code} ({r.building}) - {r.capacity} chỗ
+                    <option value="">-- Chọn lớp học --</option>
+                    {classesList.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.class_code} - {c.course_title} ({c.current_enrolled}/{c.max_capacity} HV)
                       </option>
                     ))}
                   </select>
                 </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Phòng học:</label>
+                    <select
+                      required
+                      value={addForm.classroom_id}
+                      onChange={(e) => setAddForm({ ...addForm, classroom_id: e.target.value })}
+                      className="w-full border border-slate-300 p-2.5 rounded-xl bg-white font-medium outline-hidden focus:border-indigo-600"
+                    >
+                      {classrooms.map(r => (
+                        <option key={r.id} value={r.id}>
+                          {r.room_code} ({r.building}) - {r.capacity} chỗ
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Giảng viên giảng dạy:</label>
+                    <select
+                      required
+                      value={addForm.teacher_id}
+                      onChange={(e) => setAddForm({ ...addForm, teacher_id: e.target.value })}
+                      className="w-full border border-slate-300 p-2.5 rounded-xl bg-white font-medium outline-hidden focus:border-indigo-600"
+                    >
+                      {teachers.map(t => (
+                        <option key={t.id} value={t.id}>{t.full_name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
                 <div>
-                  <label className="font-bold text-slate-700 block mb-1">Giảng viên giảng dạy:</label>
+                  <label className="font-bold text-slate-700 block mb-1">Ngày diễn ra buổi học:</label>
+                  <input
+                    type="date"
+                    required
+                    value={addForm.session_date}
+                    onChange={(e) => setAddForm({ ...addForm, session_date: e.target.value })}
+                    className="w-full border border-slate-300 p-2.5 rounded-xl bg-white font-medium outline-hidden focus:border-indigo-600"
+                  />
+                </div>
+
+                {/* Preset Slots */}
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Chọn khung ca học chuẩn:</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {TIME_SLOTS.map((slot, i) => (
+                      <button
+                        type="button"
+                        key={i}
+                        onClick={() => setAddForm({
+                          ...addForm,
+                          start_time: slot.start,
+                          end_time: slot.end,
+                          slot_name: slot.label,
+                        })}
+                        className={`p-2 rounded-xl border text-[11px] font-semibold text-left transition cursor-pointer ${
+                          addForm.start_time === slot.start && addForm.end_time === slot.end
+                            ? 'border-indigo-600 bg-indigo-50/70 text-indigo-700 font-bold'
+                            : 'border-slate-200 hover:bg-slate-50 text-slate-700'
+                        }`}
+                      >
+                        {slot.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Giờ bắt đầu:</label>
+                    <input
+                      type="text"
+                      required
+                      value={addForm.start_time}
+                      onChange={(e) => setAddForm({ ...addForm, start_time: e.target.value })}
+                      className="w-full border border-slate-300 p-2.5 rounded-xl bg-white font-mono font-medium outline-hidden focus:border-indigo-600 text-center"
+                    />
+                  </div>
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Giờ kết thúc:</label>
+                    <input
+                      type="text"
+                      required
+                      value={addForm.end_time}
+                      onChange={(e) => setAddForm({ ...addForm, end_time: e.target.value })}
+                      className="w-full border border-slate-300 p-2.5 rounded-xl bg-white font-mono font-medium outline-hidden focus:border-indigo-600 text-center"
+                    />
+                  </div>
+                </div>
+
+                {/* Conflict Status check feedback */}
+                {modalConflict && modalConflict.has_conflict && (
+                  <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 text-xs flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                    <span>{modalConflict.message}</span>
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddModal(false)}
+                    className="px-4 py-2.5 border border-slate-300 rounded-xl font-bold text-slate-600 hover:bg-slate-50 cursor-pointer"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 shadow-sm shadow-indigo-200 cursor-pointer"
+                  >
+                    Lưu buổi học
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* FORM 2: LỊCH HỌC LẶP LẠI CẢ KHÓA */}
+            {addMode === 'recurring' && (
+              <form onSubmit={handleCreateRecurring} className="space-y-3.5 text-xs">
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Chọn Lớp học cần sinh lịch <span className="text-rose-500">*</span>:
+                  </label>
                   <select
                     required
-                    value={addForm.teacher_id}
-                    onChange={(e) => setAddForm({ ...addForm, teacher_id: e.target.value })}
+                    value={recurringForm.class_id}
+                    onChange={(e) => {
+                      const cid = e.target.value;
+                      const found = classesList.find(c => String(c.id) === String(cid));
+                      setRecurringForm(prev => ({
+                        ...prev,
+                        class_id: cid,
+                        start_date: found?.start_date || prev.start_date,
+                        end_date: found?.end_date || prev.end_date,
+                        teacher_id: found?.teacher_id || prev.teacher_id || (teachers[0]?.id || ''),
+                        classroom_id: prev.classroom_id || (classrooms[0]?.id || ''),
+                      }));
+                    }}
                     className="w-full border border-slate-300 p-2.5 rounded-xl bg-white font-medium outline-hidden focus:border-indigo-600"
                   >
-                    {teachers.map(t => (
-                      <option key={t.id} value={t.id}>{t.full_name}</option>
+                    <option value="">-- Chọn lớp học --</option>
+                    {classesList.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.class_code} - {c.course_title} ({c.start_date || 'Chưa rõ'} → {c.end_date || 'Chưa rõ'})
+                      </option>
                     ))}
                   </select>
                 </div>
-              </div>
 
-              <div>
-                <label className="font-bold text-slate-700 block mb-1">Ngày diễn ra buổi học:</label>
-                <input
-                  type="date"
-                  required
-                  value={addForm.session_date}
-                  onChange={(e) => setAddForm({ ...addForm, session_date: e.target.value })}
-                  className="w-full border border-slate-300 p-2.5 rounded-xl bg-white font-medium outline-hidden focus:border-indigo-600"
-                />
-              </div>
+                {/* Thứ trong tuần */}
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1.5">
+                    Các thứ học trong tuần <span className="text-rose-500">*</span>:
+                  </label>
+                  <div className="grid grid-cols-7 gap-1.5">
+                    {[
+                      { label: 'T2', val: 0, title: 'Thứ Hai' },
+                      { label: 'T3', val: 1, title: 'Thứ Ba' },
+                      { label: 'T4', val: 2, title: 'Thứ Tư' },
+                      { label: 'T5', val: 3, title: 'Thứ Năm' },
+                      { label: 'T6', val: 4, title: 'Thứ Sáu' },
+                      { label: 'T7', val: 5, title: 'Thứ Bảy' },
+                      { label: 'CN', val: 6, title: 'Chủ Nhật' },
+                    ].map(day => {
+                      const isSelected = recurringForm.days_of_week.includes(day.val);
+                      return (
+                        <button
+                          key={day.val}
+                          type="button"
+                          title={day.title}
+                          onClick={() => {
+                            setRecurringForm(prev => {
+                              const nextDays = isSelected
+                                ? prev.days_of_week.filter(d => d !== day.val)
+                                : [...prev.days_of_week, day.val].sort();
+                              return { ...prev, days_of_week: nextDays };
+                            });
+                          }}
+                          className={`py-2 rounded-xl text-xs font-bold border transition cursor-pointer text-center ${
+                            isSelected
+                              ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                          }`}
+                        >
+                          {day.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
 
-              {/* Preset Slots */}
-              <div>
-                <label className="font-bold text-slate-700 block mb-1">Chọn khung ca học chuẩn:</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {TIME_SLOTS.map((slot, i) => (
-                    <button
-                      type="button"
-                      key={i}
-                      onClick={() => setAddForm({
-                        ...addForm,
-                        start_time: slot.start,
-                        end_time: slot.end,
-                        slot_name: slot.label,
-                      })}
-                      className={`p-2 rounded-xl border text-[11px] font-semibold text-left transition cursor-pointer ${
-                        addForm.start_time === slot.start && addForm.end_time === slot.end
-                          ? 'border-indigo-600 bg-indigo-50/70 text-indigo-700 font-bold'
-                          : 'border-slate-200 hover:bg-slate-50 text-slate-700'
-                      }`}
+                {/* Khoảng thời gian lớp */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Ngày bắt đầu:</label>
+                    <input
+                      type="date"
+                      required
+                      value={recurringForm.start_date}
+                      onChange={(e) => setRecurringForm({ ...recurringForm, start_date: e.target.value })}
+                      className="w-full border border-slate-300 p-2.5 rounded-xl bg-white font-medium outline-hidden focus:border-indigo-600"
+                    />
+                  </div>
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Ngày kết thúc:</label>
+                    <input
+                      type="date"
+                      required
+                      value={recurringForm.end_date}
+                      onChange={(e) => setRecurringForm({ ...recurringForm, end_date: e.target.value })}
+                      className="w-full border border-slate-300 p-2.5 rounded-xl bg-white font-medium outline-hidden focus:border-indigo-600"
+                    />
+                  </div>
+                </div>
+
+                {/* Phòng học & Giảng viên */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Phòng học:</label>
+                    <select
+                      required
+                      value={recurringForm.classroom_id}
+                      onChange={(e) => setRecurringForm({ ...recurringForm, classroom_id: e.target.value })}
+                      className="w-full border border-slate-300 p-2.5 rounded-xl bg-white font-medium outline-hidden focus:border-indigo-600"
                     >
-                      {slot.label}
-                    </button>
-                  ))}
+                      <option value="">-- Chọn phòng --</option>
+                      {classrooms.map(r => (
+                        <option key={r.id} value={r.id}>
+                          {r.room_code} ({r.building}) - {r.capacity} chỗ
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Giảng viên giảng dạy:</label>
+                    <select
+                      required
+                      value={recurringForm.teacher_id}
+                      onChange={(e) => setRecurringForm({ ...recurringForm, teacher_id: e.target.value })}
+                      className="w-full border border-slate-300 p-2.5 rounded-xl bg-white font-medium outline-hidden focus:border-indigo-600"
+                    >
+                      <option value="">-- Chọn giảng viên --</option>
+                      {teachers.map(t => (
+                        <option key={t.id} value={t.id}>{t.full_name}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
-              </div>
 
-              <div className="grid grid-cols-2 gap-3">
+                {/* Preset Slots */}
                 <div>
-                  <label className="font-bold text-slate-700 block mb-1">Giờ bắt đầu:</label>
-                  <input
-                    type="text"
-                    required
-                    value={addForm.start_time}
-                    onChange={(e) => setAddForm({ ...addForm, start_time: e.target.value })}
-                    className="w-full border border-slate-300 p-2.5 rounded-xl bg-white font-mono font-medium outline-hidden focus:border-indigo-600 text-center"
-                  />
+                  <label className="font-bold text-slate-700 block mb-1">Chọn khung ca học chuẩn:</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {TIME_SLOTS.map((slot, i) => (
+                      <button
+                        type="button"
+                        key={i}
+                        onClick={() => setRecurringForm({
+                          ...recurringForm,
+                          start_time: slot.start,
+                          end_time: slot.end,
+                          slot_name: slot.label,
+                        })}
+                        className={`p-2 rounded-xl border text-[11px] font-semibold text-left transition cursor-pointer ${
+                          recurringForm.start_time === slot.start && recurringForm.end_time === slot.end
+                            ? 'border-indigo-600 bg-indigo-50/70 text-indigo-700 font-bold'
+                            : 'border-slate-200 hover:bg-slate-50 text-slate-700'
+                        }`}
+                      >
+                        {slot.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <div>
-                  <label className="font-bold text-slate-700 block mb-1">Giờ kết thúc:</label>
-                  <input
-                    type="text"
-                    required
-                    value={addForm.end_time}
-                    onChange={(e) => setAddForm({ ...addForm, end_time: e.target.value })}
-                    className="w-full border border-slate-300 p-2.5 rounded-xl bg-white font-mono font-medium outline-hidden focus:border-indigo-600 text-center"
-                  />
-                </div>
-              </div>
 
-              {/* Conflict Status check feedback */}
-              {modalConflict && modalConflict.has_conflict && (
-                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 text-xs flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
-                  <span>{modalConflict.message}</span>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Giờ bắt đầu:</label>
+                    <input
+                      type="text"
+                      required
+                      value={recurringForm.start_time}
+                      onChange={(e) => setRecurringForm({ ...recurringForm, start_time: e.target.value })}
+                      className="w-full border border-slate-300 p-2.5 rounded-xl bg-white font-mono font-medium outline-hidden focus:border-indigo-600 text-center"
+                    />
+                  </div>
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Giờ kết thúc:</label>
+                    <input
+                      type="text"
+                      required
+                      value={recurringForm.end_time}
+                      onChange={(e) => setRecurringForm({ ...recurringForm, end_time: e.target.value })}
+                      className="w-full border border-slate-300 p-2.5 rounded-xl bg-white font-mono font-medium outline-hidden focus:border-indigo-600 text-center"
+                    />
+                  </div>
                 </div>
-              )}
 
-              <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2.5 border border-slate-300 rounded-xl font-bold text-slate-600 hover:bg-slate-50 cursor-pointer"
-                >
-                  Hủy
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 shadow-sm shadow-indigo-200 cursor-pointer"
-                >
-                  Lưu buổi học
-                </button>
-              </div>
-            </form>
+                {/* Confirm immediately checkbox */}
+                <div className="flex items-center gap-2 pt-1">
+                  <input
+                    type="checkbox"
+                    id="is_confirmed_recurring"
+                    checked={recurringForm.is_confirmed}
+                    onChange={(e) => setRecurringForm({ ...recurringForm, is_confirmed: e.target.checked })}
+                    className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 cursor-pointer"
+                  />
+                  <label htmlFor="is_confirmed_recurring" className="text-slate-700 font-medium cursor-pointer">
+                    Xác nhận lịch học chính thức ngay khi sinh (không để ở dạng nháp)
+                  </label>
+                </div>
+
+                <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddModal(false)}
+                    className="px-4 py-2.5 border border-slate-300 rounded-xl font-bold text-slate-600 hover:bg-slate-50 cursor-pointer"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-indigo-500 text-white rounded-xl font-bold hover:from-indigo-700 hover:to-indigo-600 shadow-sm shadow-indigo-200 cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    <span>Tự động sinh toàn bộ lịch học</span>
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>,
         document.body

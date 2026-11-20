@@ -258,7 +258,9 @@ class EnrollmentService:
         student_id: Optional[int] = None, 
         status: Optional[str] = None
     ) -> List[dict]:
-        q = db.query(EnrollmentRequest)
+        q = db.query(EnrollmentRequest).filter(
+            ~EnrollmentRequest.note.like("[TRANSFER_REQUEST:%") | (EnrollmentRequest.note == None)
+        )
         if student_id:
             q = q.filter(EnrollmentRequest.student_id == student_id)
         if status:

@@ -230,6 +230,26 @@ export const classesApi = {
         const res = await apiClient.get(`/classes/${classId}/transfer-targets`);
         return res.data;
     },
+    createTransferRequest: async (data) => {
+        const res = await apiClient.post('/classes/transfer-requests', data);
+        return res.data;
+    },
+    listTransferRequests: async (params) => {
+        const res = await apiClient.get('/classes/transfer-requests', { params });
+        return res.data;
+    },
+    getTransferRequest: async (requestId) => {
+        const res = await apiClient.get(`/classes/transfer-requests/${requestId}`);
+        return res.data;
+    },
+    approveTransferRequest: async (requestId) => {
+        const res = await apiClient.post(`/classes/transfer-requests/${requestId}/approve`);
+        return res.data;
+    },
+    rejectTransferRequest: async (requestId, data) => {
+        const res = await apiClient.post(`/classes/transfer-requests/${requestId}/reject`, data);
+        return res.data;
+    },
     transfer: async (data) => {
         const res = await apiClient.post('/classes/transfer', data);
         return res.data;

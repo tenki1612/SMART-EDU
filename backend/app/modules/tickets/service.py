@@ -205,6 +205,69 @@ class TicketService:
         receiver_role = data.receiver_role.upper() if data.receiver_role else None
         related_class_id = data.related_class_id
 
+        # Xác thực receiver_id và receiver_role do client truyền lên (BUG-03)
+        if receiver_id:
+            target_rx = db.query(User).filter(User.id == receiver_id, User.is_deleted == False).first()
+            if not target_rx:
+                raise NotFoundException("Người nhận", receiver_id)
+            actual_rx_role = target_rx.role.value if hasattr(target_rx.role, 'value') else str(target_rx.role)
+            if receiver_role and receiver_role != actual_rx_role:
+                raise BusinessException(f"Vai trò người nhận ({receiver_role}) không khớp với tài khoản ({actual_rx_role}).")
+            receiver_role = actual_rx_role
+
+        # Xác thực phân quyền đối với đơn gửi cho Phụ huynh (BUG-03)
+        if receiver_role == RoleEnum.PARENT.value:
+            from app.modules.progression_parent.models import ParentStudent
+            if receiver_id:
+                # Vé gửi riêng đến một phụ huynh cụ thể: Bắt buộc xác minh quan hệ ParentStudent
+                if role_str == RoleEnum.STUDENT.value:
+                    student = db.query(Student).filter(Student.user_id == sender_id, Student.is_deleted == False).first()
+                    if not student:
+                        raise BusinessException("Không tìm thấy hồ sơ học viên của tài khoản này.")
+                    link = db.query(ParentStudent).filter(
+                        ParentStudent.parent_user_id == receiver_id,
+                        ParentStudent.student_id == student.id,
+                        ParentStudent.is_deleted == False
+                    ).first()
+                    if not link:
+                        raise BusinessException("Học viên chỉ có thể gửi đơn cho phụ huynh có quan hệ giám hộ trực tiếp với mình.")
+                elif role_str == RoleEnum.TEACHER.value:
+                    teacher = db.query(Teacher).filter(Teacher.user_id == sender_id, Teacher.is_deleted == False).first()
+                    if not teacher:
+                        raise BusinessException("Không tìm thấy thông tin giảng viên của tài khoản này.")
+                    if related_class_id:
+                        cls = db.query(Class).filter(Class.id == related_class_id, Class.is_deleted == False).first()
+                        if not cls or cls.teacher_id != teacher.id:
+                            raise ForbiddenException("Giảng viên chỉ có thể gửi đơn liên quan đến lớp do mình phụ trách.")
+                        enrolled_student_ids = [r[0] for r in db.query(ClassStudent.student_id).filter(
+                            ClassStudent.class_id == related_class_id,
+                            ClassStudent.is_deleted == False
+                        ).all()]
+                    else:
+                        teacher_class_ids = [c.id for c in db.query(Class.id).filter(Class.teacher_id == teacher.id, Class.is_deleted == False).all()]
+                        enrolled_student_ids = [r[0] for r in db.query(ClassStudent.student_id).filter(
+                            ClassStudent.class_id.in_(teacher_class_ids),
+                            ClassStudent.is_deleted == False
+                        ).all()]
+
+                    link = db.query(ParentStudent).filter(
+                        ParentStudent.parent_user_id == receiver_id,
+                        ParentStudent.student_id.in_(enrolled_student_ids),
+                        ParentStudent.is_deleted == False
+                    ).first()
+                    if not link:
+                        raise BusinessException("Giảng viên chỉ có thể gửi đơn đến phụ huynh có con em đang theo học lớp của mình.")
+                elif role_str == RoleEnum.PARENT.value:
+                    raise ForbiddenException("Phụ huynh không có quyền gửi đơn trực tiếp đến phụ huynh khác.")
+            else:
+                # Thông báo chung đến toàn bộ phụ huynh (receiver_id is None)
+                if role_str == RoleEnum.STUDENT.value:
+                    raise BusinessException("Học viên không được gửi thông báo chung cho toàn bộ phụ huynh.")
+                elif role_str == RoleEnum.PARENT.value:
+                    raise ForbiddenException("Phụ huynh không có quyền gửi thông báo chung cho toàn bộ phụ huynh.")
+                elif role_str == RoleEnum.TEACHER.value and not related_class_id:
+                    raise BusinessException("Thông báo chung gửi đến phụ huynh từ giảng viên phải gắn với một lớp học cụ thể.")
+
         # --- 1. NGHIỆP VỤ HỌC VIÊN (STUDENT) ---
         if role_str == RoleEnum.STUDENT.value:
             # Học viên KHÔNG được tạo yêu cầu mở sổ điểm (F-02, F-03)
@@ -479,12 +542,37 @@ class TicketService:
 
             query = query.filter(or_(*filter_conds))
         elif user_role == RoleEnum.STUDENT.value:
-            query = query.filter(Ticket.receiver_id == user_id)
+            query = query.filter(
+                or_(
+                    Ticket.receiver_id == user_id,
+                    and_(
+                        Ticket.receiver_role == RoleEnum.STUDENT.value,
+                        Ticket.receiver_id.is_(None)
+                    )
+                )
+            )
+        elif user_role == RoleEnum.PARENT.value:
+            # BUG-03: Phụ huynh chỉ thấy đơn gửi riêng đích danh (receiver_id == user_id)
+            # hoặc thông báo chung toàn thể phụ huynh (receiver_id is None)
+            query = query.filter(
+                or_(
+                    Ticket.receiver_id == user_id,
+                    and_(
+                        Ticket.receiver_role == RoleEnum.PARENT.value,
+                        Ticket.receiver_id.is_(None)
+                    )
+                )
+            )
         else:
-            query = query.filter(or_(
-                Ticket.receiver_id == user_id,
-                Ticket.receiver_role == user_role
-            ))
+            query = query.filter(
+                or_(
+                    Ticket.receiver_id == user_id,
+                    and_(
+                        Ticket.receiver_role == user_role,
+                        Ticket.receiver_id.is_(None)
+                    )
+                )
+            )
 
         # 2. Bộ lọc tùy chọn (F-06)
         if ticket_type and ticket_type.strip() and ticket_type.upper() != "ALL":
@@ -546,7 +634,22 @@ class TicketService:
             query = query.filter(
                 or_(
                     Ticket.sender_id == user_id,
-                    Ticket.receiver_id == user_id
+                    Ticket.receiver_id == user_id,
+                    and_(
+                        Ticket.receiver_role == RoleEnum.STUDENT.value,
+                        Ticket.receiver_id.is_(None)
+                    )
+                )
+            )
+        elif user_role == RoleEnum.PARENT.value:
+            query = query.filter(
+                or_(
+                    Ticket.sender_id == user_id,
+                    Ticket.receiver_id == user_id,
+                    and_(
+                        Ticket.receiver_role == RoleEnum.PARENT.value,
+                        Ticket.receiver_id.is_(None)
+                    )
                 )
             )
         elif user_role == RoleEnum.TEACHER.value:
@@ -646,7 +749,7 @@ class TicketService:
             raise ForbiddenException("Quản trị viên và Nhân viên học vụ không có quyền truy cập dữ liệu khiếu nại điểm.")
 
         is_sender = ticket.sender_id == user_id
-        is_receiver = ticket.receiver_id == user_id
+        is_receiver = (ticket.receiver_id == user_id) or (ticket.receiver_id is None and ticket.receiver_role == user_role)
         is_privileged = user_role in [RoleEnum.ADMIN.value, RoleEnum.ACADEMIC_STAFF.value, "STAFF"]
 
         is_teacher_of_class = False
@@ -672,7 +775,7 @@ class TicketService:
             raise ForbiddenException("Quản trị viên và Nhân viên học vụ không có quyền phản hồi khiếu nại điểm.")
 
         is_sender = ticket.sender_id == sender_id
-        is_receiver = ticket.receiver_id == sender_id
+        is_receiver = (ticket.receiver_id == sender_id) or (ticket.receiver_id is None and ticket.receiver_role == sender_role)
         is_privileged = sender_role in [RoleEnum.ADMIN.value, RoleEnum.ACADEMIC_STAFF.value, "STAFF"]
 
         is_teacher_of_class = False
@@ -717,7 +820,7 @@ class TicketService:
             raise NotFoundException("Đơn khiếu nại/yêu cầu", ticket_id)
 
         is_sender = ticket.sender_id == user_id
-        is_receiver = ticket.receiver_id == user_id
+        is_receiver = (ticket.receiver_id == user_id) or (ticket.receiver_id is None and ticket.receiver_role == user_role)
         is_admin_or_staff = user_role in [RoleEnum.ADMIN.value, RoleEnum.ACADEMIC_STAFF.value, "STAFF"]
         is_score_comp = TicketService.is_score_complaint(ticket)
         is_unlock_req = TicketService.is_unlock_request(ticket)
