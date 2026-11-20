@@ -37,7 +37,8 @@ export const SchedulesView = () => {
   const [schedules, setSchedules] = useState([]);
   const [classrooms, setClassrooms] = useState([]);
   const [teachers, setTeachers] = useState([]);
-  const [classesList, setClassesList] = useState([]);
+  const [classes, setClasses] = useState([]);
+  const classesList = classes;
   const [loading, setLoading] = useState(false);
 
   // View & Filter states
@@ -49,6 +50,7 @@ export const SchedulesView = () => {
   const [selectedTeacherId, setSelectedTeacherId] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [showTeacherDropdown, setShowTeacherDropdown] = useState(false);
+  const [showClassDropdown, setShowClassDropdown] = useState(false);
 
   // Weekly Timetable Navigation (starts from current week's Monday)
   const [currentWeekStart, setCurrentWeekStart] = useState(() => {
@@ -119,10 +121,10 @@ export const SchedulesView = () => {
         teachersApi.list().catch(() => ({ data: [] })),
         classesApi.list(isTeacher ? { my_classes: true } : {}).catch(() => ({ data: [] })),
       ]);
-      setSchedules(resSchedules.data || []);
-      setClassrooms(resRooms.data || []);
-      setTeachers(resTeachers.data || []);
-      setClassesList(resClasses.data || []);
+      setSchedules(resSchedules?.data || []);
+      setClassrooms(resRooms?.data || []);
+      setTeachers(resTeachers?.data || []);
+      setClasses(resClasses?.data || []);
 
       if (resRooms.data?.length > 0 && !addForm.classroom_id) {
         setAddForm(prev => ({
@@ -167,6 +169,7 @@ export const SchedulesView = () => {
     const handleClickOutside = (e) => {
       if (!e.target.closest('.schedule-filter-dropdown')) {
         setShowTeacherDropdown(false);
+        setShowClassDropdown(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -176,19 +179,31 @@ export const SchedulesView = () => {
   // Distinct list for Teacher filter button (strictly TEACHER role only from teachersApi)
   const availableTeachers = useMemo(() => {
     return (teachers || [])
-      .filter(t => t.full_name)
+      .filter(t => t && t.full_name)
       .map(t => ({ id: t.id, name: t.full_name, code: t.teacher_code || '' }))
       .sort((a, b) => a.name.localeCompare(b.name, 'vi'));
   }, [teachers]);
 
+  // Distinct list for Class filter button
+  const availableClasses = useMemo(() => {
+    return (classes || [])
+      .filter(c => c && (c.id || c.class_code))
+      .map(c => ({
+        id: c.id,
+        code: c.class_code || `Lớp ${c.id}`,
+        name: c.course_title ? `${c.class_code} - ${c.course_title}` : (c.class_code || `Lớp ${c.id}`)
+      }))
+      .sort((a, b) => (a.code || '').localeCompare(b.code || '', 'vi'));
+  }, [classes]);
+
   // Compute semester bounds and weeks across all sessions
   const semesterInfo = useMemo(() => {
-    if (!schedules.length) {
+    if (!schedules.length && !classes.length) {
       return { minDate: null, maxDate: null, weeks: [] };
     }
     let minDate = null;
     let maxDate = null;
-    schedules.forEach(s => {
+    (schedules || []).forEach(s => {
       const start = s.class_start_date || s.session_date;
       const end = s.class_end_date || s.session_date;
       if (start && (!minDate || start < minDate)) minDate = start;
@@ -198,9 +213,9 @@ export const SchedulesView = () => {
     });
 
     // Mở rộng phạm vi tuần theo thời gian bắt đầu và kết thúc của các lớp học
-    classes.forEach(c => {
-      if (c.start_date && (!minDate || c.start_date < minDate)) minDate = c.start_date;
-      if (c.end_date && (!maxDate || c.end_date > maxDate)) maxDate = c.end_date;
+    (classes || []).forEach(c => {
+      if (c && c.start_date && (!minDate || c.start_date < minDate)) minDate = c.start_date;
+      if (c && c.end_date && (!maxDate || c.end_date > maxDate)) maxDate = c.end_date;
     });
 
     if (!minDate || !maxDate) {
@@ -238,7 +253,7 @@ export const SchedulesView = () => {
     return { minDate, maxDate, weeks };
   }, [schedules, classes]);
 
-  // Filtered schedules by Search text and Teacher
+  // Filtered schedules by Search text, Teacher, and Class
   const filteredSchedules = useMemo(() => {
     return schedules.filter(s => {
       // 1. Text search
@@ -260,7 +275,14 @@ export const SchedulesView = () => {
         }
       }
 
-      // 3. History filter for list view
+      // 3. Filter by Class
+      if (selectedClassId) {
+        if (String(s.class_id) !== String(selectedClassId)) {
+          return false;
+        }
+      }
+
+      // 4. History filter for list view
       if (viewMode === 'list') {
         if (historyFilter === 'upcoming' && s.session_date < todayStr) return false;
         if (historyFilter === 'past' && s.session_date >= todayStr) return false;
@@ -268,7 +290,7 @@ export const SchedulesView = () => {
 
       return true;
     });
-  }, [schedules, searchTerm, selectedTeacherId, historyFilter, viewMode, todayStr]);
+  }, [schedules, searchTerm, selectedTeacherId, selectedClassId, historyFilter, viewMode, todayStr]);
 
   // Counts for tabs
   const upcomingCount = useMemo(() => {
@@ -551,8 +573,8 @@ export const SchedulesView = () => {
         headerSlot
       )}
 
-            {/* Search and Interactive Filters for Admin & Academic Staff */}
-      {canManage && (
+      {/* Search and Interactive Filters */}
+      {(canManage || isTeacher || isStudent || isParent) && (
         <div className="bg-white p-3.5 sm:p-4 rounded-3xl border border-slate-200/90 shadow-2xs space-y-3">
           <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
             
@@ -578,7 +600,7 @@ export const SchedulesView = () => {
               )}
             </div>
 
-            {/* Hai nút tương tác: Giáo viên & Khóa học */}
+            {/* Hai nút tương tác: Giáo viên & Lớp học */}
             <div className="flex items-center gap-2 flex-wrap shrink-0">
               
               {/* Nút tương tác 1: Giáo viên (hoặc Huy hiệu lịch dạy cá nhân nếu là Giảng viên) */}
@@ -593,6 +615,7 @@ export const SchedulesView = () => {
                     type="button"
                     onClick={() => {
                       setShowTeacherDropdown(prev => !prev);
+                      setShowClassDropdown(false);
                     }}
                     className={`px-3.5 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 border shadow-2xs ${
                       selectedTeacherId
@@ -656,13 +679,83 @@ export const SchedulesView = () => {
                 </div>
               )}
 
+              {/* Nút tương tác 2: Lớp học */}
+              <div className="relative schedule-filter-dropdown">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowClassDropdown(prev => !prev);
+                    setShowTeacherDropdown(false);
+                  }}
+                  className={`px-3.5 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 border shadow-2xs ${
+                    selectedClassId
+                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-indigo-200'
+                      : 'bg-white hover:bg-slate-50 border-slate-200/90 text-slate-700'
+                  }`}
+                  title="Lọc thời khóa biểu theo Lớp học"
+                >
+                  <BookOpen className={`w-4 h-4 ${selectedClassId ? 'text-white' : 'text-indigo-600'}`} />
+                  <span className="max-w-[150px] truncate">
+                    {selectedClassId
+                      ? (availableClasses.find(c => String(c.id) === String(selectedClassId))?.code || 'Lớp học')
+                      : 'Lớp học'}
+                  </span>
+                  <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showClassDropdown ? 'rotate-180' : ''} ${selectedClassId ? 'text-white/80' : 'text-slate-400'}`} />
+                </button>
+
+                {/* Dropdown Menu Lớp học */}
+                {showClassDropdown && (
+                  <div className="absolute left-0 sm:right-0 sm:left-auto mt-2 w-72 bg-white rounded-2xl shadow-xl border border-slate-200/90 py-2 z-40 animate-in fade-in zoom-in-95 duration-150">
+                    <div className="px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-100 flex items-center justify-between">
+                      <span>Lọc theo Lớp học</span>
+                      <span className="text-slate-400 font-mono">{availableClasses.length} lớp</span>
+                    </div>
+                    <div className="max-h-60 overflow-y-auto py-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedClassId('');
+                          setShowClassDropdown(false);
+                        }}
+                        className={`w-full px-3.5 py-2 text-left text-xs font-medium flex items-center justify-between hover:bg-slate-50 cursor-pointer ${
+                          !selectedClassId ? 'text-indigo-600 font-bold bg-indigo-50/50' : 'text-slate-700'
+                        }`}
+                      >
+                        <span>Tất cả lớp học</span>
+                        {!selectedClassId && <Check className="w-3.5 h-3.5 text-indigo-600" />}
+                      </button>
+                      {availableClasses.map((c) => {
+                        const isSelected = String(selectedClassId) === String(c.id);
+                        return (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedClassId(c.id);
+                              setShowClassDropdown(false);
+                            }}
+                            className={`w-full px-3.5 py-2 text-left text-xs font-medium flex items-center justify-between hover:bg-slate-50 cursor-pointer ${
+                              isSelected ? 'text-indigo-600 font-bold bg-indigo-50/50' : 'text-slate-700'
+                            }`}
+                          >
+                            <span className="truncate pr-2">{c.name}</span>
+                            {isSelected && <Check className="w-3.5 h-3.5 text-indigo-600 shrink-0" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* Nút Đặt lại bộ lọc (Reset) khi có điều kiện lọc đang kích hoạt */}
-              {(searchTerm || selectedTeacherId) && (
+              {(searchTerm || selectedTeacherId || selectedClassId) && (
                 <button
                   type="button"
                   onClick={() => {
                     setSearchTerm('');
                     setSelectedTeacherId('');
+                    setSelectedClassId('');
                   }}
                   className="px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-2xl border border-rose-200/80 transition cursor-pointer flex items-center gap-1 active:scale-95 shadow-2xs"
                   title="Xóa toàn bộ bộ lọc"
@@ -949,7 +1042,16 @@ export const SchedulesView = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredSchedules.length === 0 ? (
+                {loading ? (
+                  <tr>
+                    <td colSpan={canManage ? 7 : 6} className="p-8 text-center text-slate-400 font-medium">
+                      <div className="flex items-center justify-center gap-2">
+                        <div className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+                        <span>Đang tải dữ liệu thời khóa biểu...</span>
+                      </div>
+                    </td>
+                  </tr>
+                ) : filteredSchedules.length === 0 ? (
                   <tr>
                     <td colSpan={canManage ? 7 : 6} className="p-8 text-center text-slate-400 font-medium">
                       Không có buổi học nào phù hợp với bộ lọc hiện tại.
