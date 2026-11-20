@@ -56,12 +56,18 @@ class ClassService:
         if data.start_date and target_opening and data.start_date < target_opening:
             raise BusinessException("Thời gian bắt đầu học thực tế không được trước thời gian mở lớp.")
         
-        # Tự động tính ngày kết thúc dựa vào số tuần của khóa học (duration_weeks)
+        # Ngày kết thúc do người dùng nhập phải được giữ nguyên; chỉ tự tính khi bỏ trống.
         calculated_end_date = data.end_date
         if data.start_date:
-            weeks = course.duration_weeks if (course.duration_weeks and course.duration_weeks > 0) else 12
-            calculated_end_date = data.start_date + timedelta(weeks=weeks)
+            if data.end_date and data.end_date < data.start_date:
+                raise BusinessException("Ngày kết thúc lớp học không được trước ngày bắt đầu học.")
+            if data.end_date is None:
+                weeks = course.duration_weeks if (course.duration_weeks and course.duration_weeks > 0) else 12
+                calculated_end_date = data.start_date + timedelta(weeks=weeks)
+        elif data.end_date and target_opening and data.end_date < target_opening:
+            raise BusinessException("Ngày kết thúc lớp học không được trước ngày mở lớp.")
 
+        initial_status = "PLANNING" if (target_opening and target_opening > today) else "OPEN_FOR_ENROLLMENT"
         cls = Class(
             class_code=data.class_code,
             course_id=data.course_id,
@@ -71,7 +77,7 @@ class ClassService:
             opening_date=target_opening,
             start_date=data.start_date,
             end_date=calculated_end_date,
-            status="OPEN_FOR_ENROLLMENT"
+            status=initial_status
         )
         db.add(cls)
         db.commit()
@@ -119,11 +125,83 @@ class ClassService:
         if data.end_date is not None:
             cls.end_date = data.end_date
         if data.status is not None:
+            ClassService.validate_class_status_transition(cls, data.status)
             cls.status = data.status
         
         db.commit()
         db.refresh(cls)
         return ClassService._format_class_response(cls)
+
+    @staticmethod
+    def validate_class_status_transition(cls: Class, new_status: str, today: Optional[date] = None):
+        """Kiểm soát chuyển đổi trạng thái lớp học (State Machine Guard):
+        - Chỉ chấp nhận các trạng thái hợp lệ trong vòng đời: PLANNING, OPEN_FOR_ENROLLMENT, IN_PROGRESS, COMPLETED, CANCELLED
+        - Lớp đã COMPLETED hoặc CANCELLED thì không thể đổi trạng thái
+        - Lớp IN_PROGRESS không được chuyển ngược về PLANNING hoặc OPEN_FOR_ENROLLMENT
+        - Không thể chuyển sang IN_PROGRESS nếu chưa đến ngày bắt đầu (start_date)
+        - Không thể chuyển sang COMPLETED nếu chưa đến ngày kết thúc (end_date)
+        """
+        valid_statuses = {"PLANNING", "OPEN_FOR_ENROLLMENT", "IN_PROGRESS", "COMPLETED", "CANCELLED"}
+        if new_status not in valid_statuses:
+            raise BusinessException(f"Trạng thái lớp học '{new_status}' không hợp lệ. Các trạng thái hợp lệ: {', '.join(sorted(valid_statuses))}")
+
+        if cls.status == new_status:
+            return
+
+        if cls.status in ["COMPLETED", "CANCELLED"]:
+            raise BusinessException(f"Không thể thay đổi trạng thái của lớp học đã ở trạng thái '{cls.status}'.")
+
+        if cls.status == "IN_PROGRESS" and new_status in ["PLANNING", "OPEN_FOR_ENROLLMENT"]:
+            raise BusinessException("Lớp đang học (IN_PROGRESS) không thể chuyển ngược về mở đăng ký hoặc lập kế hoạch.")
+
+        if not today:
+            today = date.today()
+
+        if new_status == "IN_PROGRESS":
+            if cls.start_date and today < cls.start_date:
+                raise BusinessException(f"Lớp học chưa đến ngày bắt đầu ({cls.start_date}), không thể chuyển sang trạng thái đang học (IN_PROGRESS).")
+
+        if new_status == "COMPLETED":
+            if cls.end_date and today < cls.end_date:
+                raise BusinessException(f"Lớp học chưa đến ngày kết thúc ({cls.end_date}), không thể chuyển sang trạng thái hoàn thành (COMPLETED).")
+
+    @staticmethod
+    def sync_class_lifecycle(cls: Class, today: Optional[date] = None) -> bool:
+        """Tự động đồng bộ trạng thái lớp học theo ngày mà không phụ thuộc số lượng học viên:
+        - PLANNING -> OPEN_FOR_ENROLLMENT nếu opening_date <= today < start_date
+        - OPEN_FOR_ENROLLMENT -> IN_PROGRESS nếu today >= start_date và today <= end_date
+        - OPEN_FOR_ENROLLMENT/IN_PROGRESS -> COMPLETED nếu today > end_date
+        """
+        if not cls or cls.is_deleted or cls.status in ["CANCELLED", "COMPLETED"]:
+            return False
+
+        if not today:
+            today = date.today()
+
+        changed = False
+        if cls.status == "PLANNING":
+            if cls.opening_date and today >= cls.opening_date:
+                if cls.start_date and today >= cls.start_date:
+                    if cls.end_date and today > cls.end_date:
+                        cls.status = "COMPLETED"
+                    else:
+                        cls.status = "IN_PROGRESS"
+                else:
+                    cls.status = "OPEN_FOR_ENROLLMENT"
+                changed = True
+        elif cls.status == "OPEN_FOR_ENROLLMENT":
+            if cls.start_date and today >= cls.start_date:
+                if cls.end_date and today > cls.end_date:
+                    cls.status = "COMPLETED"
+                else:
+                    cls.status = "IN_PROGRESS"
+                changed = True
+        elif cls.status == "IN_PROGRESS":
+            if cls.end_date and today > cls.end_date:
+                cls.status = "COMPLETED"
+                changed = True
+
+        return changed
 
     @staticmethod
     def list_classes(
@@ -134,6 +212,16 @@ class ClassService:
         student_id: Optional[int] = None,
         teacher_id: Optional[int] = None
     ) -> List[dict]:
+        # Đồng bộ vòng đời các lớp học theo ngày thực tế trước khi lọc
+        today = date.today()
+        all_active = db.query(Class).filter(Class.is_deleted == False).all()
+        any_changed = False
+        for c in all_active:
+            if ClassService.sync_class_lifecycle(c, today):
+                any_changed = True
+        if any_changed:
+            db.commit()
+
         query = db.query(Class).filter(Class.is_deleted == False)
         enrolled_ids = set()
         if student_id is not None:
@@ -156,10 +244,7 @@ class ClassService:
         if course_id:
             query = query.filter(Class.course_id == course_id)
         if status:
-            if student_id is not None and status == "IN_PROGRESS":
-                query = query.filter(Class.status.in_(["OPEN_FOR_ENROLLMENT", "IN_PROGRESS"]))
-            else:
-                query = query.filter(Class.status == status)
+            query = query.filter(Class.status == status)
         
         return [ClassService._format_class_response(c, is_enrolled=(c.id in enrolled_ids)) for c in query.all()]
 
@@ -168,6 +253,9 @@ class ClassService:
         cls = db.query(Class).filter(Class.id == class_id, Class.is_deleted == False).first()
         if not cls:
             raise NotFoundException("Lớp học", class_id)
+        if ClassService.sync_class_lifecycle(cls):
+            db.commit()
+            db.refresh(cls)
         return ClassService._format_class_response(cls)
 
     @staticmethod
@@ -224,6 +312,12 @@ class ClassService:
         if not student:
             raise NotFoundException("Học viên", student_id)
         
+        # BR-01: Kiểm tra điều kiện tiên quyết trước khi thêm học viên vào lớp
+        from app.modules.enrollments.service import EnrollmentService
+        is_eligible, prereq_msg = EnrollmentService.check_prerequisite_eligibility(db, student_id, class_id)
+        if not is_eligible:
+            raise BusinessException(prereq_msg)
+
         existing = db.query(ClassStudent).filter(
             ClassStudent.class_id == class_id,
             ClassStudent.student_id == student_id,
@@ -235,9 +329,10 @@ class ClassService:
         enrollment = ClassStudent(class_id=class_id, student_id=student_id, status="ENROLLED")
         db.add(enrollment)
         
-        # Tạo sẵn bản ghi điểm cho học viên trong lớp
-        grade = GradeRecord(class_id=class_id, student_id=student_id, result_status="PENDING")
-        db.add(grade)
+        # Tạo sẵn bản ghi điểm nếu lớp đang học hoặc đã hoàn thành
+        if cls.status in ["IN_PROGRESS", "COMPLETED"]:
+            grade = GradeRecord(class_id=class_id, student_id=student_id, result_status="PENDING")
+            db.add(grade)
 
         cls.current_enrolled += 1
         db.commit()
@@ -248,6 +343,7 @@ class ClassService:
         cls = db.query(Class).filter(Class.id == class_id, Class.is_deleted == False).first()
         if not cls:
             raise NotFoundException("Lớp học", class_id)
+        ClassService.validate_class_status_transition(cls, new_status)
         cls.status = new_status
         db.commit()
         db.refresh(cls)
@@ -266,6 +362,26 @@ class ClassService:
         return True
 
     @staticmethod
+    def check_classes_schedule_overlap(sessions1: list, sessions2: list) -> bool:
+        """Kiểm tra xem 2 danh sách ca học có bị trùng lịch hoặc giao nhau thời gian (overlap) hay không.
+        Giao nhau nếu cùng ngày (hoặc cùng thứ) và: max(start1, start2) < min(end1, end2) (tương đương start1 < end2 and start2 < end1).
+        """
+        if not sessions1 or not sessions2:
+            return False
+
+        for s1 in sessions1:
+            for s2 in sessions2:
+                # 1. Trùng ngày cụ thể và giao nhau khung giờ
+                if s1.session_date and s2.session_date and s1.session_date == s2.session_date:
+                    if str(s1.start_time) < str(s2.end_time) and str(s2.start_time) < str(s1.end_time):
+                        return True
+                # 2. Trùng thứ trong tuần (recurring schedule) và giao nhau khung giờ
+                if s1.session_date and s2.session_date and s1.session_date.weekday() == s2.session_date.weekday():
+                    if str(s1.start_time) < str(s2.end_time) and str(s2.start_time) < str(s1.end_time):
+                        return True
+        return False
+
+    @staticmethod
     def get_transfer_targets(db: Session, class_id: int) -> List[dict]:
         """Lấy danh sách các lớp học hợp lệ để học viên có thể chuyển sang từ class_id:
         - Cùng khóa học (hoặc tương thích)
@@ -279,6 +395,11 @@ class ClassService:
         curr_cls = db.query(Class).filter(Class.id == class_id, Class.is_deleted == False).first()
         if not curr_cls:
             raise NotFoundException("Lớp học", class_id)
+
+        # Không cho phép chuyển lớp nếu lớp hiện tại đã kết thúc hoặc bị hủy
+        ClassService.sync_class_lifecycle(curr_cls)
+        if curr_cls.status in ["COMPLETED", "CANCELLED"]:
+            return []
 
         curr_sessions = db.query(ScheduleSession).filter(
             ScheduleSession.class_id == class_id,
@@ -304,19 +425,14 @@ class ClassService:
             if curr_cls.teacher_id and cand.teacher_id and curr_cls.teacher_id == cand.teacher_id:
                 continue
 
-            # 2. Điều kiện: Khác thời khóa biểu
+            # 2. Điều kiện: Khác thời khóa biểu và không giao nhau thời gian (M-02)
             cand_sessions = db.query(ScheduleSession).filter(
                 ScheduleSession.class_id == cand.id,
                 ScheduleSession.status != "CANCELLED",
                 ScheduleSession.is_deleted == False
             ).all()
 
-            cand_pattern = {(s.session_date.weekday(), s.start_time, s.end_time) for s in cand_sessions}
-            cand_dates = {(s.session_date, s.start_time, s.end_time) for s in cand_sessions}
-
-            if curr_pattern and cand_pattern and curr_pattern == cand_pattern:
-                continue
-            if curr_dates and cand_dates and curr_dates == cand_dates:
+            if curr_sessions and cand_sessions and ClassService.check_classes_schedule_overlap(curr_sessions, cand_sessions):
                 continue
 
             distinct_slots = sorted(list({(s.session_date.weekday(), s.start_time, s.end_time) for s in cand_sessions}))
@@ -375,7 +491,23 @@ class ClassService:
         if not target_cls:
             raise NotFoundException("Lớp học đích", target_class_id)
 
-        # 1. Kiểm tra học viên đang là thành viên chính thức của lớp hiện tại
+        # 0. Đồng bộ vòng đời và kiểm tra trạng thái lớp hiện tại
+        ClassService.sync_class_lifecycle(curr_cls)
+        ClassService.sync_class_lifecycle(target_cls)
+        if curr_cls.status in ["COMPLETED", "CANCELLED"]:
+            raise BusinessException(f"Không thể chuyển lớp: Lớp hiện tại đang ở trạng thái '{curr_cls.status}'.")
+
+        # 1. Kiểm tra cùng khóa học (H-02)
+        if curr_cls.course_id != target_cls.course_id:
+            raise BusinessException("Không thể chuyển lớp: Lớp đích phải thuộc cùng khóa học với lớp hiện tại.")
+
+        # 2. Kiểm tra thông tin học viên tồn tại và hợp lệ
+        from app.modules.students.models import Student
+        student = db.query(Student).filter(Student.id == student_id, Student.is_deleted == False).first()
+        if not student:
+            raise NotFoundException("Học viên", student_id)
+
+        # 3. Kiểm tra học viên đang là thành viên chính thức của lớp hiện tại
         curr_cs = db.query(ClassStudent).filter(
             ClassStudent.class_id == current_class_id,
             ClassStudent.student_id == student_id,
@@ -385,19 +517,24 @@ class ClassService:
         if not curr_cs:
             raise BusinessException("Học viên hiện không đang theo học tại lớp học này.")
 
-        # 2. Kiểm tra lớp đích hoạt động
+        # 4. Kiểm tra trạng thái hoàn thành hoặc khóa sổ điểm của lớp đích (H-04)
+        from app.modules.grades.service import GradeService
+        is_locked, _ = GradeService.check_and_update_class_grade_lock(db, target_cls)
+        if is_locked or target_cls.status == "COMPLETED":
+            raise BusinessException(f"Không thể chuyển lớp: Lớp đích {target_cls.class_code} đã hoàn thành hoặc đã khóa sổ điểm.")
+
         if target_cls.status not in ["OPEN_FOR_ENROLLMENT", "IN_PROGRESS"]:
             raise BusinessException(f"Lớp học đích đang ở trạng thái '{target_cls.status}', không thể tiếp nhận chuyển lớp.")
 
-        # 3. Kiểm tra sĩ số lớp đích
+        # 5. Kiểm tra sĩ số lớp đích
         if (target_cls.current_enrolled or 0) >= target_cls.max_capacity:
             raise BusinessException("Lớp học đích đã đủ sĩ số tối đa, không thể tiếp nhận chuyển lớp.")
 
-        # 4. Kiểm tra giảng viên khác nhau
+        # 6. Kiểm tra giảng viên khác nhau
         if curr_cls.teacher_id and target_cls.teacher_id and curr_cls.teacher_id == target_cls.teacher_id:
-            raise BusinessException("Không thể chuyển lớp: Lớp đích phải có giảng viên khác với giảng viên phụ trách lớp hiện tại.")
+            raise BusinessException("Không thể chuyển lớp: Lớp đích phải có giảng viên khác với giảng viên phụ trách lớp hiện tại (không được cùng giảng viên).")
 
-        # 5. Kiểm tra thời khóa biểu khác nhau
+        # 7. Kiểm tra thời khóa biểu khác nhau và không giao nhau thời gian (M-02)
         curr_sessions = db.query(ScheduleSession).filter(
             ScheduleSession.class_id == current_class_id,
             ScheduleSession.status != "CANCELLED",
@@ -410,15 +547,10 @@ class ClassService:
         ).all()
 
         if curr_sessions and target_sessions:
-            set_curr = {(s.session_date, s.start_time, s.end_time) for s in curr_sessions}
-            set_target = {(s.session_date, s.start_time, s.end_time) for s in target_sessions}
-            pattern_curr = {(s.session_date.weekday(), s.start_time, s.end_time) for s in curr_sessions}
-            pattern_target = {(s.session_date.weekday(), s.start_time, s.end_time) for s in target_sessions}
+            if ClassService.check_classes_schedule_overlap(curr_sessions, target_sessions):
+                raise BusinessException("Không thể chuyển lớp: Lớp đích có thời khóa biểu trùng hoặc giao nhau với lớp hiện tại. Vui lòng chọn lớp có thời khóa biểu khác.")
 
-            if set_curr == set_target or pattern_curr == pattern_target:
-                raise BusinessException("Không thể chuyển lớp: Lớp đích có thời khóa biểu giống với lớp hiện tại. Vui lòng chọn lớp có thời khóa biểu khác.")
-
-        # 6. Kiểm tra không đăng ký trùng lặp ở lớp đích
+        # 8. Kiểm tra không đăng ký trùng lặp ở lớp đích
         already_in_target = db.query(ClassStudent).filter(
             ClassStudent.class_id == target_class_id,
             ClassStudent.student_id == student_id,
@@ -428,32 +560,80 @@ class ClassService:
         if already_in_target:
             raise BusinessException("Học viên đã là thành viên chính thức của lớp học đích.")
 
-        # THỰC HIỆN CHUYỂN LỚP
-        # 1. Hủy tư cách thành viên lớp cũ
-        curr_cs.status = "TRANSFERRED"
-        curr_cs.is_deleted = True
-        if curr_cls.current_enrolled and curr_cls.current_enrolled > 0:
-            curr_cls.current_enrolled -= 1
-
-        # 2. Ghi danh chính thức vào lớp mới
-        new_cs = ClassStudent(class_id=target_class_id, student_id=student_id, status="ENROLLED")
-        db.add(new_cs)
-        target_cls.current_enrolled = (target_cls.current_enrolled or 0) + 1
-
-        # 3. Đồng bộ sổ điểm sang lớp mới nếu chưa có
-        curr_grade = db.query(GradeRecord).filter(
-            GradeRecord.class_id == current_class_id,
-            GradeRecord.student_id == student_id,
-            GradeRecord.is_deleted == False
-        ).first()
-        
+        # 9. Kiểm tra điểm đã được xác nhận ở lớp đích (H-04)
         target_grade = db.query(GradeRecord).filter(
             GradeRecord.class_id == target_class_id,
             GradeRecord.student_id == student_id,
             GradeRecord.is_deleted == False
         ).first()
+        if target_grade and target_grade.is_confirmed:
+            raise BusinessException("Không thể chuyển lớp: Học viên đã có điểm được xác nhận ở lớp đích.")
 
-        if not target_grade:
+        # 10. BR-01: Kiểm tra điều kiện tiên quyết đối với lớp đích
+        from app.modules.enrollments.service import EnrollmentService
+        is_eligible, prereq_msg = EnrollmentService.check_prerequisite_eligibility(db, student_id, target_class_id)
+        if not is_eligible:
+            raise BusinessException(prereq_msg)
+
+        # THỰC HIỆN CHUYỂN LỚP NHẤT QUÁN:
+        # a. Cập nhật sĩ số nguyên tử (Atomic Conditional Update) tránh race condition (M-03)
+        res_target = db.query(Class).filter(
+            Class.id == target_class_id,
+            Class.is_deleted == False,
+            Class.current_enrolled < Class.max_capacity
+        ).update(
+            {Class.current_enrolled: Class.current_enrolled + 1},
+            synchronize_session="fetch"
+        )
+        if res_target == 0:
+            raise BusinessException("Lớp học đích đã đủ sĩ số tối đa, không thể tiếp nhận chuyển lớp.")
+
+        db.query(Class).filter(
+            Class.id == current_class_id,
+            Class.is_deleted == False,
+            Class.current_enrolled > 0
+        ).update(
+            {Class.current_enrolled: Class.current_enrolled - 1},
+            synchronize_session="fetch"
+        )
+
+        # b. Hủy tư cách thành viên lớp cũ
+        curr_cs.status = "TRANSFERRED"
+        curr_cs.is_deleted = True
+
+        # c. Ghi danh chính thức vào lớp mới (tránh trùng khóa unique nếu có bản ghi cũ)
+        existing_target_cs = db.query(ClassStudent).filter(
+            ClassStudent.class_id == target_class_id,
+            ClassStudent.student_id == student_id
+        ).first()
+        if existing_target_cs:
+            existing_target_cs.status = "ENROLLED"
+            existing_target_cs.is_deleted = False
+        else:
+            new_cs = ClassStudent(class_id=target_class_id, student_id=student_id, status="ENROLLED")
+            db.add(new_cs)
+
+        # d. Bảo toàn và đồng bộ sổ điểm sang lớp mới
+        curr_grade = db.query(GradeRecord).filter(
+            GradeRecord.class_id == current_class_id,
+            GradeRecord.student_id == student_id,
+            GradeRecord.is_deleted == False
+        ).first()
+
+        if target_grade:
+            if curr_grade:
+                if curr_grade.attendance_score is not None:
+                    target_grade.attendance_score = curr_grade.attendance_score
+                if curr_grade.midterm_score is not None:
+                    target_grade.midterm_score = curr_grade.midterm_score
+                if curr_grade.final_score is not None:
+                    target_grade.final_score = curr_grade.final_score
+                if curr_grade.total_score is not None:
+                    target_grade.total_score = curr_grade.total_score
+                if curr_grade.result_status:
+                    target_grade.result_status = curr_grade.result_status
+            target_grade.note = f"Chuyển từ lớp {curr_cls.class_code}. Lý do: {reason or 'Chuyển lớp học'}"
+        else:
             new_grade = GradeRecord(
                 class_id=target_class_id,
                 student_id=student_id,
@@ -461,16 +641,21 @@ class ClassService:
                 midterm_score=curr_grade.midterm_score if curr_grade else 0.0,
                 final_score=curr_grade.final_score if curr_grade else 0.0,
                 total_score=curr_grade.total_score if curr_grade else 0.0,
-                result_status="PENDING",
+                result_status=curr_grade.result_status if curr_grade else "PENDING",
                 note=f"Chuyển từ lớp {curr_cls.class_code}. Lý do: {reason or 'Chuyển lớp học'}"
             )
             db.add(new_grade)
 
-        # 4. Ghi nhận lịch sử duyệt ghi danh
+        # Không để bản ghi điểm cũ tiếp tục "active" ở lớp cũ sau khi chuyển lớp
+        # (tránh my-grades/parent grades hiển thị trùng 2 lớp và sai tổng kết).
+        if curr_grade:
+            curr_grade.is_deleted = True
+
+        # 4. Ghi nhận lịch sử duyệt ghi danh làm audit log (H-05)
         transfer_audit = EnrollmentRequest(
             student_id=student_id,
             class_id=target_class_id,
-            note=f"Chuyển lớp từ {curr_cls.class_code} sang {target_cls.class_code}. Lý do: {reason or 'Chuyển lớp học'}",
+            note=f"[TRANSFER_AUDIT] Chuyển lớp từ {curr_cls.class_code} sang {target_cls.class_code}. Lý do: {reason or 'Chuyển lớp học'}",
             status="APPROVED",
             reviewed_at=datetime.now(timezone.utc)
         )

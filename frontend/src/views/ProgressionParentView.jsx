@@ -82,6 +82,8 @@ export const ProgressionParentView = () => {
   const [wards, setWards] = useState([]);
   const [selectedWard, setSelectedWard] = useState(null);
   const [wardEnrollments, setWardEnrollments] = useState([]);
+  const [wardGrades, setWardGrades] = useState([]);
+  const [loadingWardGrades, setLoadingWardGrades] = useState(false);
 
   // Staff Manual Eligibility Checker State
   const [students, setStudents] = useState([]);
@@ -130,7 +132,7 @@ export const ProgressionParentView = () => {
       }
     } catch (e) {
       console.error(e);
-      toast.error('Lỗi tải dữ liệu chuyển khóa học: ' + e.message);
+      toast.error('Lỗi tải dữ liệu lộ trình học tập: ' + e.message);
     }
   };
 
@@ -144,8 +146,15 @@ export const ProgressionParentView = () => {
         .getWardEnrollmentStatus(selectedWard.student_id)
         .then((res) => setWardEnrollments(res.data || []))
         .catch((e) => toast.error('Lỗi tải thông tin đăng ký của con: ' + e.message));
+
+      setLoadingWardGrades(true);
+      progressionParentApi
+        .getWardGrades(selectedWard.student_id)
+        .then((res) => setWardGrades(res.data || []))
+        .catch((e) => console.error('Lỗi tải bảng điểm con: ', e))
+        .finally(() => setLoadingWardGrades(false));
     }
-  }, [selectedWard]);
+  }, [selectedWard, isParent]);
 
   // ---------------------------------------------------------------------------
   // 3. ACTION HANDLERS
@@ -1152,11 +1161,89 @@ export const ProgressionParentView = () => {
             </div>
           </div>
 
-          {selectedWard && (
+          {selectedWard && activeSubTab === 'wards' && (
             <div className="bg-white rounded-3xl border border-slate-200/80 p-5 shadow-xs space-y-4">
-              <h4 className="font-bold text-slate-800 text-xs">
-                Trạng thái đăng ký khóa học của {selectedWard.full_name}
-              </h4>
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div>
+                  <h4 className="font-bold text-slate-800 text-xs">
+                    Lộ trình & Bảng điểm học tập của {selectedWard.full_name}
+                  </h4>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Mã học viên: <span className="font-mono font-bold text-indigo-600">{selectedWard.student_code}</span>
+                  </p>
+                </div>
+                <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-full border border-indigo-100">
+                  {wardGrades.length} lớp học phần
+                </span>
+              </div>
+
+              {loadingWardGrades ? (
+                <div className="py-8 text-center text-xs text-slate-400">Đang tải bảng điểm của con...</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs text-left">
+                    <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+                      <tr>
+                        <th className="py-2.5 px-4">Lớp học</th>
+                        <th className="py-2.5 px-4">Khóa học</th>
+                        <th className="py-2.5 px-4 text-center">Chuyên cần (10%)</th>
+                        <th className="py-2.5 px-4 text-center">Giữa kỳ (30%)</th>
+                        <th className="py-2.5 px-4 text-center">Cuối kỳ (60%)</th>
+                        <th className="py-2.5 px-4 text-center">Tổng kết</th>
+                        <th className="py-2.5 px-4 text-center">Kết quả</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {wardGrades.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="py-8 text-center text-slate-400">
+                            Chưa có dữ liệu học tập hoặc điểm số nào được ghi nhận.
+                          </td>
+                        </tr>
+                      ) : (
+                        wardGrades.map((g) => (
+                          <tr key={g.class_id}>
+                            <td className="py-3 px-4 font-mono font-bold text-indigo-600">{g.class_code}</td>
+                            <td className="py-3 px-4 font-semibold text-slate-800">{g.course_title}</td>
+                            <td className="py-3 px-4 text-center font-mono">{g.attendance_score ?? '--'}</td>
+                            <td className="py-3 px-4 text-center font-mono">{g.midterm_score ?? '--'}</td>
+                            <td className="py-3 px-4 text-center font-mono">{g.final_score ?? '--'}</td>
+                            <td className="py-3 px-4 text-center font-mono font-bold text-indigo-600">
+                              {g.total_score != null ? g.total_score.toFixed(1) : '--'}
+                            </td>
+                            <td className="py-3 px-4 text-center">
+                              <span
+                                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                                  g.result_status === 'PASSED'
+                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                    : g.result_status === 'FAILED'
+                                    ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                    : 'bg-amber-50 text-amber-700 border border-amber-200'
+                                }`}
+                              >
+                                {g.result_status === 'PASSED' ? 'Đạt' : g.result_status === 'FAILED' ? 'Chưa đạt' : 'Đang học'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {selectedWard && activeSubTab === 'ward_requests' && (
+            <div className="bg-white rounded-3xl border border-slate-200/80 p-5 shadow-xs space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <h4 className="font-bold text-slate-800 text-xs">
+                  Danh sách đơn đăng ký khóa học & lớp học của {selectedWard.full_name}
+                </h4>
+                <span className="text-[11px] font-bold text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-100">
+                  {wardEnrollments.length} yêu cầu
+                </span>
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs text-left">
                   <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">

@@ -1,5 +1,5 @@
 from typing import List, Optional
-from datetime import date
+from datetime import date, timedelta
 from sqlalchemy.orm import Session
 from app.modules.schedules.models import ScheduleSession
 from app.modules.classes.models import Class, ClassStudent
@@ -7,7 +7,7 @@ from app.modules.classrooms.models import Classroom
 from app.modules.teachers.models import Teacher
 from app.modules.students.models import Student
 from app.core.exceptions import BusinessException, NotFoundException
-from app.modules.schedules.schemas import ScheduleSessionCreate, ScheduleSessionUpdate
+from app.modules.schedules.schemas import ScheduleSessionCreate, ScheduleSessionUpdate, ScheduleRecurringCreate
 from app.modules.schedules.conflict_checker import ScheduleConflictChecker
 
 class ScheduleService:
@@ -67,6 +67,95 @@ class ScheduleService:
         db.commit()
         db.refresh(session)
         return ScheduleService._format_session(session)
+
+    @staticmethod
+    def generate_recurring_sessions(db: Session, data: ScheduleRecurringCreate) -> dict:
+        """
+        N-05: Tự động sinh danh sách buổi học lặp lại theo tuần cho lớp học từ ngày bắt đầu đến ngày kết thúc
+        """
+        cls = db.query(Class).filter(Class.id == data.class_id, Class.is_deleted == False).first()
+        if not cls:
+            raise NotFoundException("Lớp học", data.class_id)
+
+        effective_start = data.start_date or cls.start_date
+        effective_end = data.end_date or cls.end_date
+
+        if not effective_start:
+            raise BusinessException("Lớp học chưa xác định ngày bắt đầu.")
+
+        if not effective_end:
+            duration = cls.course.duration_weeks if (cls.course and cls.course.duration_weeks) else 12
+            effective_end = effective_start + timedelta(weeks=duration)
+
+        if effective_end < effective_start:
+            raise BusinessException("Ngày kết thúc không được trước ngày bắt đầu.")
+
+        if not data.days_of_week:
+            raise BusinessException("Vui lòng chọn ít nhất một thứ trong tuần để tạo lịch học lặp lại.")
+
+        created_sessions = []
+        conflicts = []
+        skipped_count = 0
+
+        cur_date = effective_start
+        while cur_date <= effective_end:
+            if cur_date.weekday() in data.days_of_week:
+                # Kiểm tra trùng lặp buổi học đã tồn tại cho lớp vào ngày và giờ này
+                existing = db.query(ScheduleSession).filter(
+                    ScheduleSession.class_id == data.class_id,
+                    ScheduleSession.session_date == cur_date,
+                    ScheduleSession.start_time == data.start_time,
+                    ScheduleSession.is_deleted == False
+                ).first()
+                if existing:
+                    skipped_count += 1
+                else:
+                    # Kiểm tra xung đột phòng học / giáo viên
+                    has_conflict, c_type, msg = ScheduleConflictChecker.check_conflicts(
+                        db=db,
+                        classroom_id=data.classroom_id,
+                        teacher_id=data.teacher_id,
+                        session_date=cur_date,
+                        start_time=data.start_time,
+                        end_time=data.end_time
+                    )
+                    if has_conflict:
+                        conflicts.append({
+                            "date": str(cur_date),
+                            "conflict_type": c_type,
+                            "message": msg
+                        })
+                    else:
+                        sess = ScheduleSession(
+                            class_id=data.class_id,
+                            classroom_id=data.classroom_id,
+                            teacher_id=data.teacher_id,
+                            session_date=cur_date,
+                            start_time=data.start_time,
+                            end_time=data.end_time,
+                            slot_name=data.slot_name,
+                            is_confirmed=False,
+                            status="SCHEDULED"
+                        )
+                        db.add(sess)
+                        created_sessions.append(sess)
+            cur_date += timedelta(days=1)
+
+        db.commit()
+        for s in created_sessions:
+            db.refresh(s)
+
+        return {
+            "class_id": cls.id,
+            "class_code": cls.class_code,
+            "start_date": str(effective_start),
+            "end_date": str(effective_end),
+            "created_count": len(created_sessions),
+            "skipped_count": skipped_count,
+            "conflicts_count": len(conflicts),
+            "conflicts": conflicts,
+            "sessions": [ScheduleService._format_session(s) for s in created_sessions]
+        }
 
     @staticmethod
     def update_session(db: Session, session_id: int, data: ScheduleSessionUpdate) -> dict:

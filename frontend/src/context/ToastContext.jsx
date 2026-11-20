@@ -51,18 +51,26 @@ export const ToastProvider = ({ children }) => {
     <ToastContext.Provider value={{ success, error, warning, info }}>
       {children}
       {createPortal(
-        <div className="fixed bottom-5 right-5 z-50 flex flex-col gap-2.5 max-w-sm w-full pointer-events-none px-4 sm:px-0">
+        <div
+          id="toast-root"
+          className="fixed top-5 right-5 z-[9999] flex flex-col gap-2.5 max-w-sm sm:max-w-md w-full pointer-events-none px-4 sm:px-0"
+          style={{ zIndex: 9999 }}
+          role="region"
+          aria-live="polite"
+          aria-label="Thông báo hệ thống"
+        >
           {toasts.map((t) => {
             const conf = configs[t.type] || configs.info;
             return (
               <div
                 key={t.id}
-                className={`pointer-events-auto flex items-start justify-between gap-3 p-3.5 rounded-2xl border shadow-xl text-xs font-semibold backdrop-blur-md transition-all duration-200 animate-in slide-in-from-bottom-2 fade-in ${conf.style}`}
+                role="alert"
+                className={`pointer-events-auto flex items-start justify-between gap-3 p-3.5 sm:p-4 rounded-2xl border shadow-2xl text-xs font-semibold backdrop-blur-md transition-all duration-200 animate-in slide-in-from-top-2 fade-in ${conf.style}`}
               >
-                <div className="flex items-start gap-2.5 min-w-0">
-                  <div className="mt-0.5">{conf.icon}</div>
-                  <div className="min-w-0">
-                    <p className="text-xs font-bold leading-snug break-words">
+                <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                  <div className="mt-0.5 shrink-0">{conf.icon}</div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-bold leading-snug break-words whitespace-pre-line text-slate-900">
                       {t.message}
                     </p>
                   </div>
@@ -70,7 +78,7 @@ export const ToastProvider = ({ children }) => {
                 <button
                   type="button"
                   onClick={() => removeToast(t.id)}
-                  className="text-slate-400 hover:text-slate-700 cursor-pointer p-0.5 rounded-md shrink-0 transition"
+                  className="text-slate-400 hover:text-slate-700 cursor-pointer p-1 rounded-lg shrink-0 transition"
                   aria-label="Đóng thông báo"
                 >
                   <X className="w-3.5 h-3.5" />

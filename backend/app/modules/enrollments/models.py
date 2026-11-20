@@ -3,6 +3,10 @@ from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 from app.core.database import Base
 from app.common.base_model import TimestampMixin
+from app.modules.accounts.models import User
+from app.modules.students.models import Student
+from app.modules.teachers.models import Teacher
+from app.modules.classes.models import Class
 
 class EnrollmentRequest(Base, TimestampMixin):
     """Đăng ký và xét duyệt lớp học (FR-50 -> FR-60)"""

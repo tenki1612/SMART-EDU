@@ -1,4 +1,5 @@
 import os
+import secrets
 from pathlib import Path
 from typing import List
 from pydantic import field_validator
@@ -7,10 +8,29 @@ from pydantic_settings import BaseSettings
 _BASE_DIR = Path(__file__).resolve().parent.parent.parent
 _DEFAULT_DB = _BASE_DIR / "language_center.db"
 
+
+def _resolve_secret_key() -> str:
+    """SECURITY: never ship a hard-coded signing key.
+
+    Production/staging must provide SECRET_KEY via environment (or .env).
+    Local dev/test gets an ephemeral random key so forging tokens with a
+    publicly-known literal is impossible.
+    """
+    configured = os.getenv("SECRET_KEY", "").strip()
+    if configured:
+        return configured
+    environment = os.getenv("ENVIRONMENT", os.getenv("ENV", "development")).strip().lower()
+    if environment in ("production", "prod", "staging"):
+        raise RuntimeError(
+            "SECRET_KEY must be set via environment in production/staging. "
+            "Refusing to start with an insecure default."
+        )
+    return secrets.token_urlsafe(48)
+
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Language Center Management System (Hệ thống Quản lý Trung tâm Ngoại ngữ)"
     API_V1_STR: str = "/api/v1"
-    SECRET_KEY: str = "super-secret-key-change-in-production-language-center-2026"
+    SECRET_KEY: str = _resolve_secret_key()
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 1 day
     

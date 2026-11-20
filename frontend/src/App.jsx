@@ -46,7 +46,8 @@ const tabMetadata = {
   schedules: { group: 'Lịch học & Đào tạo', label: 'Thời khóa biểu', icon: CalendarDays },
   enrollments: { group: 'Lịch học & Tuyển sinh', label: 'Đăng ký lớp học', icon: UserCheck },
   grades: { group: 'Đánh giá & Tiến độ', label: 'Sổ điểm & Kết quả', icon: FileSpreadsheet },
-  progression: { group: 'Đánh giá & Tiến độ', label: 'Chuyển khóa học', icon: ArrowUpRight },
+  progression: { group: 'Đánh giá & Tiến độ', label: 'Lộ trình học tập', icon: ArrowUpRight },
+  wards: { group: 'Cổng Phụ huynh', label: 'Giám hộ con em', icon: Users },
   tickets: { group: 'Giao tiếp & Đơn từ', label: 'Đơn từ & Khiếu nại', icon: MessageSquare },
   students: { group: 'Quản trị & Nhân sự', label: 'Hồ sơ Học viên', icon: Users },
   teachers: { group: 'Quản trị & Nhân sự', label: 'Hồ sơ Giáo viên', icon: GraduationCap },
@@ -62,6 +63,7 @@ const tabRolePermissions = {
   enrollments: ['ADMIN', 'ACADEMIC_STAFF', 'STUDENT'],
   grades: ['ADMIN', 'ACADEMIC_STAFF', 'TEACHER', 'STUDENT', 'PARENT'],
   progression: ['ADMIN', 'ACADEMIC_STAFF', 'STUDENT', 'PARENT'],
+  wards: ['PARENT'],
   tickets: ['ADMIN', 'ACADEMIC_STAFF', 'TEACHER', 'STUDENT', 'PARENT'],
   students: ['ADMIN', 'ACADEMIC_STAFF'],
   teachers: ['ADMIN', 'ACADEMIC_STAFF'],
@@ -142,15 +144,17 @@ const MainApp = () => {
     }
 
     const justLoggedIn = sessionStorage.getItem('just_logged_in') === 'true';
-    const isNewUser = prevUserIdRef.current !== user.id;
 
-    if (justLoggedIn || isNewUser) {
+    // Chỉ về dashboard sau khi đăng nhập mới (cờ just_logged_in).
+    // Không ép về dashboard khi tải lại trang (refresh) để giữ deep-link ?tab=...
+    if (justLoggedIn) {
       sessionStorage.removeItem('just_logged_in');
       sessionStorage.removeItem('just_logged_out');
       prevUserIdRef.current = user.id;
       handleTabChange('dashboard');
       return;
     }
+    prevUserIdRef.current = user.id;
 
     const params = new URLSearchParams(window.location.search);
     const tabParam = params.get('tab');
@@ -182,6 +186,11 @@ const MainApp = () => {
   const TabIcon = currentMeta.icon;
 
   const renderContent = () => {
+    // Chặn render nội dung trái quyền ngay từ lần render đầu (deep-link ?tab=...),
+    // không đợi effect redirect (effect chạy sau paint).
+    if (!isTabAllowedForRole(currentTab, user?.role)) {
+      return <DashboardView onTabChange={handleTabChange} />;
+    }
     switch (currentTab) {
       case 'dashboard':
         return <DashboardView onTabChange={handleTabChange} />;
@@ -196,6 +205,7 @@ const MainApp = () => {
       case 'enrollments':
         return <EnrollmentsView />;
       case 'progression':
+      case 'wards':
         return <ProgressionParentView />;
       case 'grades':
         return <GradesView />;

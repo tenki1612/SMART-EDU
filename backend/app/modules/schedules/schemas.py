@@ -11,6 +11,17 @@ class ScheduleSessionCreate(BaseModel):
     end_time: str   # e.g. "20:00"
     slot_name: str = "Ca tối (18:00 - 20:00)"
 
+class ScheduleRecurringCreate(BaseModel):
+    class_id: int
+    classroom_id: int
+    teacher_id: int
+    days_of_week: List[int] # 0=Monday, 1=Tuesday, ..., 6=Sunday
+    start_time: str # e.g. "18:00"
+    end_time: str   # e.g. "20:00"
+    slot_name: str = "Ca học"
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+
 class ScheduleSessionUpdate(BaseModel):
     classroom_id: Optional[int] = None
     teacher_id: Optional[int] = None

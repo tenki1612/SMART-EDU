@@ -18,10 +18,21 @@ apiClient.interceptors.request.use((config) => {
 
 // Response Interceptor
 apiClient.interceptors.response.use((response) => response, (error) => {
+    const status = error.response?.status;
     const message = error.response?.data?.detail ||
         error.response?.data?.message ||
         'Đã xảy ra lỗi khi kết nối máy chủ.';
-    return Promise.reject(new Error(message));
+
+    // Token hết hạn / không hợp lệ: xóa session và tải lại để về màn hình đăng nhập.
+    if (status === 401) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        if (typeof window !== 'undefined') window.location.reload();
+    }
+
+    const wrapped = new Error(message);
+    wrapped.status = status;
+    return Promise.reject(wrapped);
 });
 
 // 1. Auth API
@@ -290,6 +301,12 @@ export const enrollmentsApi = {
         });
         return res.data;
     },
+    checkPrerequisite: async (classId, studentId) => {
+        const params = { class_id: classId };
+        if (studentId) params.student_id = studentId;
+        const res = await apiClient.get('/enrollments/check-prerequisite', { params });
+        return res.data;
+    },
 };
 
 // 9. Schedules API
@@ -306,6 +323,10 @@ export const schedulesApi = {
     },
     create: async (data) => {
         const res = await apiClient.post('/schedules/', data);
+        return res.data;
+    },
+    createRecurring: async (data) => {
+        const res = await apiClient.post('/schedules/recurring', data);
         return res.data;
     },
     update: async (id, data) => {
@@ -439,12 +460,12 @@ export const ticketsApi = {
         const res = await apiClient.post('/tickets/', data);
         return res.data;
     },
-    listSent: async () => {
-        const res = await apiClient.get('/tickets/sent');
+    listSent: async (params = null) => {
+        const res = await apiClient.get('/tickets/sent', { params });
         return res.data;
     },
-    listInbox: async () => {
-        const res = await apiClient.get('/tickets/inbox');
+    listInbox: async (params = null) => {
+        const res = await apiClient.get('/tickets/inbox', { params });
         return res.data;
     },
     getDetail: async (id) => {
@@ -455,12 +476,16 @@ export const ticketsApi = {
         const res = await apiClient.post(`/tickets/${id}/messages`, { content });
         return res.data;
     },
-    updateStatus: async (id, status) => {
-        const res = await apiClient.patch(`/tickets/${id}/status`, { status });
+    updateStatus: async (id, status, reason = null) => {
+        const res = await apiClient.patch(`/tickets/${id}/status`, { status, reason });
         return res.data;
     },
     checkDeadline: async (classId) => {
         const res = await apiClient.get(`/tickets/check-deadline/${classId}`);
+        return res.data;
+    },
+    getStats: async () => {
+        const res = await apiClient.get('/tickets/stats');
         return res.data;
     },
 };

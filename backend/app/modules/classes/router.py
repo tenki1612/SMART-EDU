@@ -123,6 +123,23 @@ def get_class_students(
         if not teacher or cls.teacher_id != teacher.id:
             raise HTTPException(status_code=403, detail="Giáo viên chỉ được phép xem danh sách học viên lớp học của mình!")
 
+    # Phụ huynh chỉ được xem danh sách lớp có con mình theo học (chống IDOR)
+    if role == RoleEnum.PARENT.value:
+        from app.modules.progression_parent.models import ParentStudent
+        from app.modules.classes.models import ClassStudent
+        ward_ids = [r[0] for r in db.query(ParentStudent.student_id).filter(
+            ParentStudent.parent_user_id == user_id
+        ).all()]
+        ward_in_class = None
+        if ward_ids:
+            ward_in_class = db.query(ClassStudent.id).filter(
+                ClassStudent.class_id == class_id,
+                ClassStudent.student_id.in_(ward_ids),
+                ClassStudent.is_deleted == False
+            ).first()
+        if not ward_in_class:
+            raise HTTPException(status_code=403, detail="Phụ huynh chỉ được xem danh sách lớp học của con mình!")
+
     students = ClassService.get_class_roster(db, class_id)
     return ApiResponse(data=students, message="Danh sách học viên trong lớp")
 
@@ -159,8 +176,26 @@ def delete_class(
 def get_transfer_targets(
     class_id: int,
     db: Session = Depends(get_db),
+    payload: dict = Depends(get_current_user_payload),
     _ = Depends(require_roles([RoleEnum.ADMIN, RoleEnum.ACADEMIC_STAFF, RoleEnum.STUDENT]))
 ):
+    role = payload.get("role")
+    if role == RoleEnum.STUDENT.value:
+        user_id = int(payload["sub"])
+        from app.modules.students.models import Student
+        from app.modules.classes.models import ClassStudent
+        student = db.query(Student).filter(Student.user_id == user_id, Student.is_deleted == False).first()
+        if not student:
+            raise HTTPException(status_code=403, detail="Không tìm thấy hồ sơ học viên hoặc không có quyền truy cập.")
+        cs = db.query(ClassStudent).filter(
+            ClassStudent.class_id == class_id,
+            ClassStudent.student_id == student.id,
+            ClassStudent.status == "ENROLLED",
+            ClassStudent.is_deleted == False
+        ).first()
+        if not cs:
+            raise HTTPException(status_code=403, detail="Bạn không có quyền xem thông tin chuyển lớp của lớp học này (chỉ dành cho học viên của lớp).")
+
     targets = ClassService.get_transfer_targets(db, class_id)
     return ApiResponse(data=targets, message="Danh sách các lớp học hợp lệ để chuyển lớp")
 

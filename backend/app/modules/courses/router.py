@@ -51,7 +51,8 @@ def list_courses(
 @router.get("/{course_id}", response_model=ApiResponse[CourseResponse], summary="FR-14: Xem chi tiết khóa học")
 def get_course_detail(
     course_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: dict = Depends(get_current_user_payload)
 ):
     course = CourseService.get_course_detail(db, course_id)
     return ApiResponse(data=course, message="Chi tiết khóa học")

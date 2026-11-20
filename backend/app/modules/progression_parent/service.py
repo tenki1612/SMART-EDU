@@ -145,6 +145,11 @@ class ProgressionParentService:
         if existing:
             if existing.is_confirmed:
                 raise BusinessException("Bạn đã được phê duyệt chuyển sang khóa học này rồi. Vui lòng đăng ký vào lớp học của khóa.")
+            elif existing.confirmed_at is not None:
+                # Hồ sơ đã bị Học vụ từ chối (is_confirmed=False nhưng có confirmed_at):
+                # cho phép gửi lại yêu cầu mới thay vì khóa vĩnh viễn học viên.
+                existing.is_deleted = True
+                db.flush()
             else:
                 raise BusinessException("Bạn đã có yêu cầu chuyển sang khóa học này đang chờ phê duyệt.")
 
@@ -264,10 +269,16 @@ class ProgressionParentService:
     @staticmethod
     def confirm_progression(db: Session, progression_id: int, staff_user_id: int) -> dict:
         """FR-79: Nhân viên học vụ xác nhận học viên đủ điều kiện học khóa cao hơn"""
-        prog = db.query(CourseProgression).filter(CourseProgression.id == progression_id).first()
+        prog = db.query(CourseProgression).filter(
+            CourseProgression.id == progression_id,
+            CourseProgression.is_deleted == False
+        ).first()
         if not prog:
             raise NotFoundException("Hồ sơ chuyển khóa", progression_id)
-        
+
+        if not prog.is_eligible:
+            raise BusinessException("Hồ sơ chuyển khóa này không đủ điều kiện, không thể xác nhận.")
+
         prog.is_confirmed = True
         prog.confirmed_by = staff_user_id
         prog.confirmed_at = datetime.now(timezone.utc)
@@ -292,13 +303,33 @@ class ProgressionParentService:
         ).first()
 
         if not eligible_prog:
+            # FR-78: không được tự xác nhận chuyển khóa khi học viên chưa đủ điều kiện.
+            # Phải có ít nhất một kết quả PASSED, đã khóa sổ của một khóa trước đó.
+            from app.modules.classes.models import Class as _Class
+            prior_passed = db.query(GradeRecord.id).join(
+                _Class, GradeRecord.class_id == _Class.id
+            ).filter(
+                GradeRecord.student_id == student_id,
+                GradeRecord.result_status == "PASSED",
+                GradeRecord.is_confirmed == True,
+                GradeRecord.is_deleted == False,
+                _Class.course_id != target_class.course_id,
+                _Class.is_deleted == False
+            ).first()
+
+            if not prior_passed:
+                raise BusinessException(
+                    "Học viên chưa đủ điều kiện chuyển khóa (chưa hoàn thành và đạt khóa trước). "
+                    "Vui lòng gửi yêu cầu chuyển khóa để học vụ xét duyệt."
+                )
+
             eligible_prog = CourseProgression(
                 student_id=student_id,
                 next_course_id=target_class.course_id,
                 is_eligible=True,
                 is_confirmed=True,
                 confirmed_at=datetime.now(timezone.utc),
-                note="Tự động ghi nhận đăng ký khóa học tiếp theo"
+                note="Tự động ghi nhận đăng ký khóa học tiếp theo (đã đủ điều kiện PASSED khóa trước)"
             )
             db.add(eligible_prog)
             db.commit()
@@ -323,7 +354,8 @@ class ProgressionParentService:
             
             # Tính điểm trung bình
             grades = db.query(GradeRecord).filter(GradeRecord.student_id == s.id, GradeRecord.is_confirmed == True, GradeRecord.is_deleted == False).all()
-            avg_score = round(sum(g.total_score for g in grades) / len(grades), 2) if grades else None
+            valid_scores = [g.total_score for g in grades if g.total_score is not None]
+            avg_score = round(sum(valid_scores) / len(valid_scores), 2) if valid_scores else None
 
             results.append(ParentWardInfoResponse(
                 student_id=s.id,

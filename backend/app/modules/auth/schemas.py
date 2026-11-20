@@ -48,7 +48,6 @@ class ForgotPasswordResponse(BaseModel):
     phone: Optional[str] = None
     channel: str = "BOTH"
     target_masked: str = "" # Ví dụ: "ad***ed@center.edu.vn & 099****777"
-    reset_code: Optional[str] = None
     expires_in_minutes: int = 15
     message: str
 

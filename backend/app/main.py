@@ -86,7 +86,22 @@ app.add_middleware(
 # Standardized Error Handlers
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    errors = exc.errors()
+    def _json_safe(err: dict) -> dict:
+        """Pydantic puts raw exception objects in `ctx`; they are not JSON serializable."""
+        safe = {}
+        for key, value in err.items():
+            if key == "ctx" and isinstance(value, dict):
+                safe[key] = {
+                    k: (v if isinstance(v, (str, int, float, bool, type(None))) else str(v))
+                    for k, v in value.items()
+                }
+            elif isinstance(value, (str, int, float, bool, type(None), list, dict)):
+                safe[key] = value
+            else:
+                safe[key] = str(value)
+        return safe
+
+    errors = [_json_safe(e) for e in exc.errors()]
     error_msg = errors[0].get("msg") if errors else "Lỗi xác thực dữ liệu đầu vào"
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

@@ -12,15 +12,15 @@ class EnrollmentRejectRequest(BaseModel):
 class EnrollmentRequestResponse(BaseModel):
     id: int
     student_id: int
-    student_code: str
-    student_name: str
+    student_code: Optional[str] = ""
+    student_name: Optional[str] = ""
     student_phone: Optional[str] = None
     class_id: int
-    class_code: str
-    course_title: str
-    target_level: str
-    request_date: datetime
-    status: str # PENDING, APPROVED, REJECTED, CANCELLED
+    class_code: Optional[str] = ""
+    course_title: Optional[str] = ""
+    target_level: Optional[str] = ""
+    request_date: Optional[datetime] = None
+    status: str = "PENDING" # PENDING, APPROVED, REJECTED, CANCELLED
     note: Optional[str] = None
     rejection_reason: Optional[str] = None
     reviewed_at: Optional[datetime] = None

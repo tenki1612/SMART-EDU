@@ -92,11 +92,19 @@ export const CommandPalette = ({
     },
     {
       id: 'progression',
-      label: 'Lộ trình & Phụ huynh',
-      description: 'Kiểm tra điều kiện tiên quyết nâng khóa & cổng phụ huynh theo dõi con',
+      label: 'Lộ trình học tập',
+      description: 'Xem lộ trình đào tạo, tiến trình học tập và thẩm định điều kiện tiên quyết',
       icon: Award,
       roles: ['ADMIN', 'ACADEMIC_STAFF', 'STUDENT', 'PARENT'],
       category: 'Đánh giá',
+    },
+    {
+      id: 'wards',
+      label: 'Giám hộ con em',
+      description: 'Cổng phụ huynh theo dõi kết quả và tình hình học tập của con',
+      icon: Users,
+      roles: ['PARENT'],
+      category: 'Phụ huynh',
     },
     {
       id: 'students',

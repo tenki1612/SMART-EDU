@@ -514,7 +514,7 @@ def seed_database():
             current_enrolled=1,
             start_date=date(2026, 11, 1),
             end_date=date(2027, 1, 24),
-            status="OPEN_FOR_ENROLLMENT"
+            status="IN_PROGRESS"
         )
         cls2 = Class(
             class_code="IELTS-75-K26A",
@@ -522,7 +522,8 @@ def seed_database():
             teacher_id=teacher_profile.id,
             max_capacity=20,
             current_enrolled=0,
-            start_date=date(2026, 11, 20),
+            opening_date=date(2026, 11, 1),
+            start_date=date(2026, 11, 25),
             end_date=date(2027, 2, 20),
             status="OPEN_FOR_ENROLLMENT"
         )
@@ -534,7 +535,7 @@ def seed_database():
             current_enrolled=3,
             start_date=date(2026, 11, 15),
             end_date=date(2027, 1, 15),
-            status="OPEN_FOR_ENROLLMENT"
+            status="IN_PROGRESS"
         )
         cls4 = Class(
             class_code="IELTS-65-K26B",
@@ -544,7 +545,7 @@ def seed_database():
             current_enrolled=3,
             start_date=date(2026, 11, 10),
             end_date=date(2027, 2, 10),
-            status="OPEN_FOR_ENROLLMENT"
+            status="IN_PROGRESS"
         )
         cls5 = Class(
             class_code="COMM-A2-K08",
@@ -554,7 +555,7 @@ def seed_database():
             current_enrolled=3,
             start_date=date(2026, 11, 5),
             end_date=date(2027, 1, 5),
-            status="OPEN_FOR_ENROLLMENT"
+            status="IN_PROGRESS"
         )
         cls6 = Class(
             class_code="COMM-B1-K09",
@@ -564,7 +565,7 @@ def seed_database():
             current_enrolled=2,
             start_date=date(2026, 11, 12),
             end_date=date(2027, 1, 22),
-            status="OPEN_FOR_ENROLLMENT"
+            status="IN_PROGRESS"
         )
         cls7 = Class(
             class_code="IELTS-50-K15",
@@ -574,7 +575,7 @@ def seed_database():
             current_enrolled=2,
             start_date=date(2026, 11, 8),
             end_date=date(2027, 1, 18),
-            status="OPEN_FOR_ENROLLMENT"
+            status="IN_PROGRESS"
         )
         cls8 = Class(
             class_code="TOEIC-550-K30",
@@ -584,7 +585,7 @@ def seed_database():
             current_enrolled=2,
             start_date=date(2026, 11, 15),
             end_date=date(2027, 1, 15),
-            status="OPEN_FOR_ENROLLMENT"
+            status="IN_PROGRESS"
         )
         cls9 = Class(
             class_code="TEENS-B2-K04",
@@ -594,7 +595,7 @@ def seed_database():
             current_enrolled=2,
             start_date=date(2026, 11, 18),
             end_date=date(2027, 2, 18),
-            status="OPEN_FOR_ENROLLMENT"
+            status="IN_PROGRESS"
         )
         cls10 = Class(
             class_code="IELTS-75-K26B",

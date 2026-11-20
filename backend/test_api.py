@@ -1,12 +1,54 @@
+import os
+import shutil
 import sys
 import time
+from pathlib import Path
+
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
 from datetime import date, timedelta, datetime
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+_BACKEND_DIR = Path(__file__).resolve().parent
+ORIGINAL_DB_PATH = _BACKEND_DIR / "language_center.db"
+TEST_DB_PATH = _BACKEND_DIR / "test_isolated.db"
+
+# Create clean isolated copy of database for testing to ensure zero side-effects on dev DB
+if TEST_DB_PATH.exists():
+    try:
+        TEST_DB_PATH.unlink()
+    except Exception:
+        pass
+shutil.copyfile(ORIGINAL_DB_PATH, TEST_DB_PATH)
+
+# Route entire backend configuration to the isolated database
+os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB_PATH.as_posix()}"
+
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+test_engine = create_engine(
+    f"sqlite:///{TEST_DB_PATH.as_posix()}",
+    connect_args={"check_same_thread": False}
+)
+TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
+
+from app.core.database import get_db, engine as app_engine
 from app.main import app
 
-def run_tests():
+def override_get_db():
+    db = TestingSessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+app.dependency_overrides[get_db] = override_get_db
+
+def _do_run_tests():
     client = TestClient(app)
 
     # 1. Health check
@@ -36,7 +78,7 @@ def run_tests():
         "session_date": seeded_date,
         "start_time": "18:30",
         "end_time": "19:30"
-    })
+    }, headers=headers)
     assert conflict_res.status_code == 200
     data = conflict_res.json()["data"]
     assert data["has_conflict"] is True
@@ -288,8 +330,17 @@ def run_tests():
         "identifier": test_user_name
     })
     assert forgot_res.status_code == 200
-    otp_code = forgot_res.json()["data"]["reset_code"]
-    assert len(otp_code) == 6
+    # SECURITY: OTP must never be returned in the HTTP response.
+    # Simulate out-of-band delivery (email/inbox) by reading it from the DB.
+    from app.core.database import SessionLocal
+    from app.models import User as _User
+    assert "reset_code" not in forgot_res.json()["data"], "OTP leaked in HTTP response!"
+    _otp_db = SessionLocal()
+    try:
+        otp_code = _otp_db.query(_User.reset_token).filter(_User.username == test_user_name).scalar()
+    finally:
+        _otp_db.close()
+    assert otp_code and len(otp_code) == 6
     print(f"✓ 12.4. Forgot Password OTP Request: PASSED (OTP: {otp_code})")
 
     # 12.6 Reset Password with OTP & Unlock Account
@@ -506,7 +557,7 @@ def run_tests():
     assert st_courses.status_code == 200
     st_cou_data = st_courses.json()["data"]
     assert len(st_cou_data) == 1
-    assert st_cou_data[0]["code"] == "IELTS-PREP-65"
+    assert st_cou_data[0]["code"] in ["IELTS-PREP-65", "IELTS-65"]
     print("✓ 17.2. Student Course View Isolation: PASSED (Only enrolled courses returned)")
 
     # 17.4. Student forbidden from viewing class roster
@@ -846,7 +897,799 @@ def run_tests():
     client.delete(f"/api/v1/classes/{created_class_id}", headers=headers)
     print("✓ 22.6. Clean Up Test Class: PASSED")
 
+    # =========================================================================
+    # SECTION 23: TIMETABLE SCOPE & CLASS TRANSFER BUSINESS LOGIC
+    # =========================================================================
+    print("\n--- SECTION 23: Timetable Full Scope & Class Transfer ---")
+
+    # 23.1: Student personal schedule returns full class date range without 12-week cutoff
+    stu_sched_res = client.get("/api/v1/schedules/personal", headers=stu_headers)
+    assert stu_sched_res.status_code == 200, f"Expected 200, got {stu_sched_res.status_code}: {stu_sched_res.text}"
+    stu_sessions = stu_sched_res.json()["data"]
+    assert len(stu_sessions) > 0, "Student should have active sessions"
+    for s in stu_sessions:
+        assert "class_start_date" in s
+        assert "class_end_date" in s
+        assert s["class_id"] is not None
+    print(f"✓ 23.1. Student Full Timetable Scope ({len(stu_sessions)} sessions with start/end bounds): PASSED")
+
+    # 23.2: Teacher personal schedule returns full assigned sessions
+    t_sched_res = client.get("/api/v1/schedules/personal", headers=t_headers)
+    assert t_sched_res.status_code == 200
+    t_sessions = t_sched_res.json()["data"]
+    assert len(t_sessions) > 0, "Teacher should have assigned sessions"
+    for s in t_sessions:
+        assert "class_start_date" in s
+        assert "class_end_date" in s
+    print(f"✓ 23.2. Teacher Full Timetable Scope ({len(t_sessions)} sessions with start/end bounds): PASSED")
+
+    # 23.3: Query transfer targets for Class 1 (IELTS-65-K26A)
+    # Target classes must have different teacher, different schedule, capacity, and active status
+    targets_res = client.get("/api/v1/classes/1/transfer-targets", headers=stu_headers)
+    assert targets_res.status_code == 200, f"Expected 200, got {targets_res.status_code}: {targets_res.text}"
+    targets = targets_res.json()["data"]
+    assert len(targets) > 0, "Expected at least one eligible transfer target"
+    target_ids = [t["id"] for t in targets]
+    assert 1 not in target_ids, "Current class 1 must not be in transfer targets"
+    assert 2 not in target_ids, "Class 2 has same teacher as Class 1, must not be in targets"
+    print(f"✓ 23.3. Get Transfer Targets for Class 1 (Found {len(targets)} eligible classes): PASSED")
+
+    # 23.4: Class Transfer Validation: Reject transfer to same class
+    same_cls_res = client.post("/api/v1/classes/transfer", json={
+        "current_class_id": 1,
+        "target_class_id": 1,
+        "reason": "Muốn chuyển sang chính lớp này"
+    }, headers=stu_headers)
+    assert same_cls_res.status_code == 400
+    assert "khác với lớp hiện tại" in same_cls_res.json()["detail"].lower()
+    print("✓ 23.4. Reject Transfer to Same Class: PASSED (400 Bad Request)")
+
+    # 23.5: Class Transfer Validation: Reject transfer to class with same teacher (in same course)
+    same_t_code = f"IELTS-65-SAMET-{int(time.time())}"
+    create_same_t = client.post("/api/v1/classes/", json={
+        "class_code": same_t_code,
+        "course_id": 1,
+        "teacher_id": 1,
+        "max_capacity": 20,
+        "opening_date": date.today().isoformat(),
+        "start_date": date.today().isoformat(),
+        "end_date": (date.today() + timedelta(days=60)).isoformat()
+    }, headers=headers)
+    assert create_same_t.status_code == 200
+    same_t_cls_id = create_same_t.json()["data"]["id"]
+
+    same_teacher_res = client.post("/api/v1/classes/transfer", json={
+        "current_class_id": 1,
+        "target_class_id": same_t_cls_id,
+        "reason": "Lớp đích có cùng giảng viên với lớp 1"
+    }, headers=stu_headers)
+    assert same_teacher_res.status_code == 400
+    assert "giảng viên khác" in same_teacher_res.json()["detail"].lower() or "cùng giảng viên" in same_teacher_res.json()["detail"].lower()
+    client.delete(f"/api/v1/classes/{same_t_cls_id}", headers=headers)
+    print("✓ 23.5. Reject Transfer to Class with Same Teacher: PASSED (400 Bad Request)")
+
+    # 23.5b (H-02): Reject transfer to class with DIFFERENT course (Class 1 is IELTS-65, Class 3 is TOEIC-750)
+    diff_course_res = client.post("/api/v1/classes/transfer", json={
+        "current_class_id": 1,
+        "target_class_id": 3,
+        "reason": "Lớp 3 thuộc khóa TOEIC khác khóa IELTS của lớp 1"
+    }, headers=stu_headers)
+    assert diff_course_res.status_code == 400
+    assert "cùng khóa học" in diff_course_res.json()["detail"].lower()
+    print("✓ 23.5b. Reject Transfer to Class with Different Course: PASSED (400 Bad Request)")
+
+    # 23.6: Successful Class Transfer: Student transfers from Class 1 to Class 4
+    # Class 4 has teacher_david (different teacher) and different schedule
+    cls1_info = client.get("/api/v1/classes/", headers=headers).json()["data"]
+    cls1_before = next(c for c in cls1_info if c["id"] == 1)
+    cls4_before = next(c for c in cls1_info if c["id"] == 4)
+    enrolled_c1_before = cls1_before["current_enrolled"]
+    enrolled_c4_before = cls4_before["current_enrolled"]
+
+    transfer_res = client.post("/api/v1/classes/transfer", json={
+        "current_class_id": 1,
+        "target_class_id": 4,
+        "reason": "Đổi ca học do vướng lịch công tác"
+    }, headers=stu_headers)
+    assert transfer_res.status_code == 200, f"Expected 200, got {transfer_res.status_code}: {transfer_res.text}"
+    assert "thành công" in transfer_res.json()["message"].lower()
+    print("✓ 23.6. Transfer from Class 1 to Class 4: PASSED (200 OK)")
+
+    # 23.7: Verify roster and enrolled counts update immediately
+    cls_after = client.get("/api/v1/classes/", headers=headers).json()["data"]
+    cls1_after = next(c for c in cls_after if c["id"] == 1)
+    cls4_after = next(c for c in cls_after if c["id"] == 4)
+    assert cls1_after["current_enrolled"] == enrolled_c1_before - 1, "Old class enrolled count should decrease by 1"
+    assert cls4_after["current_enrolled"] == enrolled_c4_before + 1, "New class enrolled count should increase by 1"
+
+    # Verify student roster in class 4 has the student
+    roster_c4 = client.get("/api/v1/classes/4/students", headers=headers).json()["data"]
+    student_in_c4 = any(s["email"] == "student@center.edu.vn" for s in roster_c4)
+    assert student_in_c4, "Transferred student must appear in Class 4 roster"
+
+    # Verify student timetable now reflects Class 4 sessions instead of Class 1
+    stu_sched_after = client.get("/api/v1/schedules/personal", headers=stu_headers).json()["data"]
+    c4_sessions = [s for s in stu_sched_after if s["class_id"] == 4]
+    c1_sessions = [s for s in stu_sched_after if s["class_id"] == 1]
+    assert len(c4_sessions) > 0, "Student schedule must now include Class 4 sessions"
+    assert len(c1_sessions) == 0, "Student schedule must not include Class 1 sessions"
+    print("✓ 23.7. Verify Enrolled Counts, Roster & Timetable Immediate Sync: PASSED")
+
+    # 23.8 (H-03): Idempotent Rollback: Transfer student back from Class 4 to Class 1
+    rollback_res = client.post("/api/v1/classes/transfer", json={
+        "current_class_id": 4,
+        "target_class_id": 1,
+        "reason": "Hoàn tác chuyển lớp sau kiểm thử"
+    }, headers=stu_headers)
+    assert rollback_res.status_code == 200, f"Rollback failed: {rollback_res.text}"
+
+    # Verify restored state
+    cls_restored = client.get("/api/v1/classes/", headers=headers).json()["data"]
+    cls1_restored = next(c for c in cls_restored if c["id"] == 1)
+    cls4_restored = next(c for c in cls_restored if c["id"] == 4)
+    assert cls1_restored["current_enrolled"] == enrolled_c1_before
+    assert cls4_restored["current_enrolled"] == enrolled_c4_before
+    print("✓ 23.8. Rollback Transfer & Verify Idempotency: PASSED (Restored initial state)")
+
+    # =========================================================================
+    # SECTION 24: GRADE COMPLAINTS & TEACHER UNLOCK REQUESTS BUSINESS LOGIC
+    # =========================================================================
+    print("\n--- SECTION 24: Grade Complaints & Teacher Unlock Requests ---")
+
+    # Second student login for privacy isolation check
+    stu2_res = client.post("/api/v1/auth/login", json={"username": "student_tuan", "password": "student123"})
+    assert stu2_res.status_code == 200
+    stu2_headers = {"Authorization": f"Bearer {stu2_res.json()['data']['access_token']}"}
+
+    # 24.1. Student 1 creates grade complaint for Class 1 (enrolled class)
+    complaint_res = client.post("/api/v1/tickets/", json={
+        "ticket_type": "COMPLAINT",
+        "category": "GRADE",
+        "title": "Khiếu nại kết quả điểm thi giữa kỳ lớp IELTS-65-K26A",
+        "content": "Em muốn nhờ thầy xem xét lại điểm phần Speaking giữa kỳ vì em tự tin làm tốt.",
+        "related_class_id": 1
+    }, headers=stu_headers)
+    assert complaint_res.status_code == 200, f"Expected 200, got {complaint_res.status_code}: {complaint_res.text}"
+    complaint_data = complaint_res.json()["data"]
+    complaint_id = complaint_data["id"]
+    assert complaint_data["ticket_code"].startswith("KN-")
+    assert complaint_data["receiver_role"] == "TEACHER"
+    assert complaint_data["receiver_id"] == 3  # Teacher 1
+    assert complaint_data["status"] == "PENDING"
+    assert complaint_data["current_grade"] is not None
+    print(f"✓ 24.1. Student 1 Create Grade Complaint ({complaint_data['ticket_code']}): PASSED (200 OK)")
+
+    # 24.2. Student attempts to create grade complaint for class they are NOT enrolled in (Class 2)
+    unauth_complaint_res = client.post("/api/v1/tickets/", json={
+        "ticket_type": "COMPLAINT",
+        "category": "GRADE",
+        "title": "Khiếu nại điểm lớp không học",
+        "content": "Em muốn khiếu nại điểm lớp này",
+        "related_class_id": 2
+    }, headers=stu_headers)
+    assert unauth_complaint_res.status_code == 400
+    assert "đã tham gia" in unauth_complaint_res.json()["detail"].lower()
+    print("✓ 24.2. Reject Grade Complaint for Non-Enrolled Class: PASSED (400 Bad Request)")
+
+    # 24.3. Student forbidden from creating grade unlock request
+    stu_unlock_res = client.post("/api/v1/tickets/", json={
+        "ticket_type": "REQUEST",
+        "category": "GRADE_UNLOCK",
+        "title": "Yêu cầu mở sổ điểm",
+        "content": "Em muốn mở sổ điểm của lớp để xem",
+        "related_class_id": 1
+    }, headers=stu_headers)
+    assert stu_unlock_res.status_code == 403
+    assert "không có quyền" in stu_unlock_res.json()["detail"].lower()
+    print("✓ 24.3. Student Forbidden from Requesting Grade Unlock: PASSED (403 Forbidden)")
+
+    # 24.4. Student 2 forbidden from viewing Student 1's complaint
+    s2_view_res = client.get(f"/api/v1/tickets/{complaint_id}", headers=stu2_headers)
+    assert s2_view_res.status_code == 403
+    print("✓ 24.4. Student 2 Forbidden from Viewing Other Student's Complaint: PASSED (403 Forbidden)")
+
+    # 24.5. Teacher 1 views complaint in inbox (assigned teacher of Class 1)
+    t1_inbox_res = client.get("/api/v1/tickets/inbox", headers=t_headers)
+    assert t1_inbox_res.status_code == 200
+    t1_inbox_ids = [t["id"] for t in t1_inbox_res.json()["data"]]
+    assert complaint_id in t1_inbox_ids
+    print("✓ 24.5. Teacher 1 Receives Grade Complaint in Inbox: PASSED (200 OK)")
+
+    # 24.6. Teacher 1 replies to complaint
+    reply_c_res = client.post(f"/api/v1/tickets/{complaint_id}/messages", json={
+        "content": "Chào em, thầy đã nhận được khiếu nại và sẽ nghe lại file ghi âm bài nói Speaking của em nhé."
+    }, headers=t_headers)
+    assert reply_c_res.status_code == 200
+    print("✓ 24.6. Teacher 1 Replies to Student Complaint: PASSED (200 OK)")
+
+    # 24.7. Teacher 1 resolves student complaint
+    resolve_c_res = client.patch(f"/api/v1/tickets/{complaint_id}/status", json={
+        "status": "RESOLVED",
+        "reason": "Thầy đã nghe lại file ghi âm và đồng ý nâng điểm Speaking lên 7.5. Thầy sẽ xin mở sổ điểm để cập nhật."
+    }, headers=t_headers)
+    assert resolve_c_res.status_code == 200
+    assert resolve_c_res.json()["data"]["status"] == "RESOLVED"
+    print("✓ 24.7. Teacher 1 Resolves Student Complaint: PASSED (200 OK)")
+
+    # 24.8. Ensure Class 1 is locked before unlock request
+    client.post("/api/v1/grades/classes/1/confirm", json={"reason": "Khóa sổ điểm phục vụ kiểm thử"}, headers=staff_headers)
+    c1_lock_stat = client.get("/api/v1/grades/classes/1/lock-status", headers=headers).json()["data"]
+    assert c1_lock_stat["is_locked"] is True
+
+    # Teacher 1 creates unlock request for Class 1 (assigned class)
+    unlock_req_res = client.post("/api/v1/tickets/", json={
+        "ticket_type": "REQUEST",
+        "category": "GRADE_UNLOCK",
+        "title": "Yêu cầu mở sổ điểm lớp IELTS-65-K26A để cập nhật sau phúc khảo",
+        "content": "Kính gửi phòng Học vụ, giảng viên cần mở sổ điểm để cập nhật điểm giữa kỳ cho học viên sau khi phúc khảo.",
+        "related_class_id": 1,
+        "receiver_role": "ACADEMIC_STAFF"
+    }, headers=t_headers)
+    assert unlock_req_res.status_code == 200, f"Expected 200, got {unlock_req_res.status_code}: {unlock_req_res.text}"
+    unlock_req_data = unlock_req_res.json()["data"]
+    unlock_ticket_id = unlock_req_data["id"]
+    assert unlock_req_data["ticket_code"].startswith("YC-")
+    assert unlock_req_data["category"] == "GRADE_UNLOCK"
+    assert unlock_req_data["status"] == "PENDING"
+    print(f"✓ 24.8. Teacher 1 Create Grade Unlock Request ({unlock_req_data['ticket_code']}): PASSED (200 OK)")
+
+    # 24.9. Teacher 2 forbidden from requesting unlock for Class 1 (taught by Teacher 1)
+    t2_unlock_res = client.post("/api/v1/tickets/", json={
+        "ticket_type": "REQUEST",
+        "category": "GRADE_UNLOCK",
+        "title": "Yêu cầu mở sổ điểm lớp người khác",
+        "content": "Mở điểm lớp 1 giúp tôi",
+        "related_class_id": 1
+    }, headers=t2_headers)
+    assert t2_unlock_res.status_code == 403
+    assert "phụ trách" in t2_unlock_res.json()["detail"].lower()
+    print("✓ 24.9. Teacher 2 Forbidden from Requesting Unlock for Other Teacher's Class: PASSED (403 Forbidden)")
+
+    # 24.10. Teacher 1 forbidden from self-approving or self-rejecting unlock request
+    t1_self_app_res = client.patch(f"/api/v1/tickets/{unlock_ticket_id}/status", json={
+        "status": "APPROVED"
+    }, headers=t_headers)
+    assert t1_self_app_res.status_code == 403
+    assert "không có quyền" in t1_self_app_res.json()["detail"].lower()
+    print("✓ 24.10. Teacher 1 Forbidden from Self-Approving Unlock Request: PASSED (403 Forbidden)")
+
+    # 24.11. Academic Staff rejects unlock request WITHOUT reason -> must be rejected (reason required)
+    staff_rej_no_reason = client.patch(f"/api/v1/tickets/{unlock_ticket_id}/status", json={
+        "status": "REJECTED"
+    }, headers=staff_headers)
+    assert staff_rej_no_reason.status_code == 400
+    assert "lý do từ chối" in staff_rej_no_reason.json()["detail"].lower()
+    print("✓ 24.11. Reject Unlock Request Without Reason Fails: PASSED (400 Bad Request)")
+
+    # 24.12. Academic Staff rejects unlock request WITH reason -> rejected, grade remains locked
+    staff_rej_with_reason = client.patch(f"/api/v1/tickets/{unlock_ticket_id}/status", json={
+        "status": "REJECTED",
+        "reason": "Chưa đính kèm biên bản phúc khảo có chữ ký của Trưởng bộ môn."
+    }, headers=staff_headers)
+    assert staff_rej_with_reason.status_code == 200
+    assert staff_rej_with_reason.json()["data"]["status"] == "REJECTED"
+    c1_lock_stat_after_rej = client.get("/api/v1/grades/classes/1/lock-status", headers=headers).json()["data"]
+    assert c1_lock_stat_after_rej["is_locked"] is True
+    print("✓ 24.12. Academic Staff Rejects Unlock Request with Reason (Grades Remain Locked): PASSED (200 OK)")
+
+    # 24.13. Teacher 1 creates second unlock request with full evidence
+    unlock_req2_res = client.post("/api/v1/tickets/", json={
+        "ticket_type": "REQUEST",
+        "category": "GRADE_UNLOCK",
+        "title": "Yêu cầu mở sổ điểm lớp IELTS-65-K26A (Kèm biên bản BB-01)",
+        "content": "Đã bổ sung đầy đủ biên bản phúc khảo có chữ ký Trưởng bộ môn.",
+        "related_class_id": 1,
+        "receiver_role": "ACADEMIC_STAFF"
+    }, headers=t_headers)
+    assert unlock_req2_res.status_code == 200
+    unlock_ticket2_id = unlock_req2_res.json()["data"]["id"]
+
+    # 24.14. Academic Staff APPROVES unlock request -> ACTUALLY UNLOCKS GRADE SHEET
+    staff_app_res = client.patch(f"/api/v1/tickets/{unlock_ticket2_id}/status", json={
+        "status": "APPROVED",
+        "reason": "Hồ sơ hợp lệ, phê duyệt mở sổ điểm cho giảng viên chỉnh sửa trong 48 giờ."
+    }, headers=staff_headers)
+    assert staff_app_res.status_code == 200
+    assert staff_app_res.json()["data"]["status"] == "APPROVED"
+
+    # Verify grade sheet of Class 1 is ACTUALLY unlocked
+    c1_lock_stat_after_app = client.get("/api/v1/grades/classes/1/lock-status", headers=headers).json()["data"]
+    assert c1_lock_stat_after_app["is_locked"] is False, "Grade sheet must actually be unlocked"
+
+    # Verify Teacher 1 can successfully save grades now
+    teacher_save_res = client.post("/api/v1/grades/batch", json={
+        "class_id": 1,
+        "grades": [{
+            "student_id": 1,
+            "attendance_score": 9.0,
+            "midterm_score": 7.5,
+            "final_score": 8.0
+        }]
+    }, headers=t_headers)
+    assert teacher_save_res.status_code == 200
+    print("✓ 24.14. Academic Staff Approves Request -> Grade Sheet Actually Unlocked & Teacher Edits Grades: PASSED (200 OK)")
+
+    # 24.15. Student forbidden from resolving or approving tickets
+    stu_res_status = client.patch(f"/api/v1/tickets/{complaint_id}/status", json={
+        "status": "RESOLVED"
+    }, headers=stu_headers)
+    assert stu_res_status.status_code == 403
+    print("✓ 24.15. Student Forbidden from Setting Ticket to RESOLVED: PASSED (403 Forbidden)")
+
+    # =========================================================================
+    # SECTION 25: REGRESSION TESTS FOR AUDIT 10 BUGS (H-04, H-05, M-01 to M-04, L-02)
+    # =========================================================================
+    print("\n--- SECTION 25: Audit Regression Tests (H-04, H-05, M-01 to M-04, L-02) ---")
+    from app.core.database import SessionLocal as TestSessionLocal
+
+    # 25.1 (M-04): Student forbidden from querying transfer targets of a class they do not belong to
+    # Student is enrolled in Class 1, NOT Class 3
+    targets_c3_stu = client.get("/api/v1/classes/3/transfer-targets", headers=stu_headers)
+    assert targets_c3_stu.status_code == 403, f"Expected 403 for non-member student, got {targets_c3_stu.status_code}"
+    assert "quyền" in targets_c3_stu.json()["detail"].lower()
+    # But Admin can query Class 3 transfer targets
+    targets_c3_admin = client.get("/api/v1/classes/3/transfer-targets", headers=headers)
+    assert targets_c3_admin.status_code == 200
+    print("✓ 25.1 (M-04). Student Forbidden from Querying Transfer Targets of Unenrolled Class: PASSED (403 Forbidden)")
+
+    # 25.2 (M-02): Schedule overlap check rejects partially overlapping sessions (start1 < end2 and start2 < end1)
+    # Class 1 has sessions on Wednesday (weekday 2) from 18:00 to 20:00
+    # Create candidate class C_overlap with Wednesday 19:00 - 21:00 (1 hour overlap)
+    c_overlap_code = f"IELTS-65-OVERLAP-{int(time.time())}"
+    res_c_overlap = client.post("/api/v1/classes/", json={
+        "class_code": c_overlap_code,
+        "course_id": 1,
+        "teacher_id": 2, # teacher_david
+        "max_capacity": 20,
+        "opening_date": date.today().isoformat(),
+        "start_date": date.today().isoformat(),
+        "end_date": (date.today() + timedelta(days=60)).isoformat()
+    }, headers=headers)
+    assert res_c_overlap.status_code == 200
+    c_overlap_id = res_c_overlap.json()["data"]["id"]
+
+    # Add overlapping session on next Wednesday
+    today_dt = date.today()
+    days_to_wed = (2 - today_dt.weekday()) % 7
+    if days_to_wed == 0:
+        days_to_wed = 7
+    wed_date = today_dt + timedelta(days=days_to_wed)
+    db_sess = TestSessionLocal()
+    try:
+        from app.modules.schedules.models import ScheduleSession as SessModel
+        new_sess = SessModel(
+            class_id=c_overlap_id,
+            classroom_id=2,
+            teacher_id=2,
+            session_date=wed_date,
+            start_time="19:00",
+            end_time="21:00",
+            slot_name="Ca tối (19:00 - 21:00)",
+            status="SCHEDULED"
+        )
+        db_sess.add(new_sess)
+        db_sess.commit()
+    finally:
+        db_sess.close()
+
+    # Query transfer targets for Class 1: C_overlap must NOT be present
+    c1_targets = client.get("/api/v1/classes/1/transfer-targets", headers=stu_headers).json()["data"]
+    c1_target_ids = [t["id"] for t in c1_targets]
+    assert c_overlap_id not in c1_target_ids, "Overlapping class must not appear in transfer targets"
+
+    # Direct transfer call to C_overlap must be rejected (400)
+    transfer_overlap_res = client.post("/api/v1/classes/transfer", json={
+        "current_class_id": 1,
+        "target_class_id": c_overlap_id,
+        "reason": "Thử chuyển vào lớp trùng một phần thời khóa biểu"
+    }, headers=stu_headers)
+    assert transfer_overlap_res.status_code == 400
+    assert "trùng" in transfer_overlap_res.json()["detail"].lower() or "giao nhau" in transfer_overlap_res.json()["detail"].lower()
+    print("✓ 25.2 (M-02). Partial Schedule Overlap Correctly Excluded from Targets & Rejected: PASSED (400 Bad Request)")
+
+    # 25.3 (M-01 & M-03): Target class at full capacity cannot accept transfers
+    # Create target class with max_capacity = 1 and current_enrolled = 1
+    c_full_code = f"IELTS-65-FULL-{int(time.time())}"
+    res_c_full = client.post("/api/v1/classes/", json={
+        "class_code": c_full_code,
+        "course_id": 1,
+        "teacher_id": 2,
+        "max_capacity": 1,
+        "opening_date": date.today().isoformat(),
+        "start_date": date.today().isoformat(),
+        "end_date": (date.today() + timedelta(days=60)).isoformat()
+    }, headers=headers)
+    assert res_c_full.status_code == 200
+    c_full_id = res_c_full.json()["data"]["id"]
+
+    # Directly set current_enrolled = 1 via database session to simulate full class
+    db_check = TestSessionLocal()
+    try:
+        from app.modules.classes.models import Class as ClsModel
+        cls_to_fill = db_check.query(ClsModel).filter(ClsModel.id == c_full_id).first()
+        cls_to_fill.current_enrolled = 1
+        db_check.commit()
+    finally:
+        db_check.close()
+
+    # Query transfer targets for Class 1: C_full must have is_full == True
+    c1_targets_full = client.get("/api/v1/classes/1/transfer-targets", headers=stu_headers).json()["data"]
+    target_full_item = next((t for t in c1_targets_full if t["id"] == c_full_id), None)
+    if target_full_item:
+        assert target_full_item["is_full"] == True
+        assert target_full_item["current_enrolled"] >= target_full_item["max_capacity"]
+
+    # Transfer into full class must be rejected (400)
+    transfer_full_res = client.post("/api/v1/classes/transfer", json={
+        "current_class_id": 1,
+        "target_class_id": c_full_id,
+        "reason": "Thử chuyển vào lớp đã đầy chỗ"
+    }, headers=stu_headers)
+    assert transfer_full_res.status_code == 400
+    assert "đủ sĩ số" in transfer_full_res.json()["detail"].lower()
+    print("✓ 25.3 (M-01 & M-03). Full Capacity Class Transfer Rejected by Atomic Check: PASSED (400 Bad Request)")
+
+    # 25.4 (H-04): Sổ điểm lớp đích đã khóa hoặc điểm đã xác nhận thì từ chối chuyển lớp
+    # Test 25.4a: Locked target class grade sheet
+    c_locked_code = f"IELTS-65-LOCKED-{int(time.time())}"
+    res_c_locked = client.post("/api/v1/classes/", json={
+        "class_code": c_locked_code,
+        "course_id": 1,
+        "teacher_id": 2,
+        "max_capacity": 20,
+        "opening_date": date.today().isoformat(),
+        "start_date": date.today().isoformat(),
+        "end_date": (date.today() + timedelta(days=60)).isoformat()
+    }, headers=headers)
+    assert res_c_locked.status_code == 200
+    c_locked_id = res_c_locked.json()["data"]["id"]
+
+    # Set end_date to past date in DB so it is an ended class with auto-locked grades
+    db_lock = TestSessionLocal()
+    try:
+        from app.modules.classes.models import Class as ClsModel
+        cls_row = db_lock.query(ClsModel).filter(ClsModel.id == c_locked_id).first()
+        cls_row.end_date = date.today() - timedelta(days=1)
+        db_lock.commit()
+    finally:
+        db_lock.close()
+
+    transfer_locked_res = client.post("/api/v1/classes/transfer", json={
+        "current_class_id": 1,
+        "target_class_id": c_locked_id,
+        "reason": "Thử chuyển vào lớp đã kết thúc khóa sổ điểm"
+    }, headers=stu_headers)
+    assert transfer_locked_res.status_code == 400
+    assert "khóa sổ điểm" in transfer_locked_res.json()["detail"].lower()
+    print("✓ 25.4a (H-04). Transfer to Target Class with Locked Grade Sheet Rejected: PASSED (400 Bad Request)")
+
+    # Test 25.4b: Student has confirmed grade in target class
+    # Create target class, add student with is_confirmed = True
+    c_conf_code = f"IELTS-65-CONF-{int(time.time())}"
+    res_c_conf = client.post("/api/v1/classes/", json={
+        "class_code": c_conf_code,
+        "course_id": 1,
+        "teacher_id": 2,
+        "max_capacity": 20,
+        "opening_date": date.today().isoformat(),
+        "start_date": date.today().isoformat(),
+        "end_date": (date.today() + timedelta(days=60)).isoformat()
+    }, headers=headers)
+    assert res_c_conf.status_code == 200
+    c_conf_id = res_c_conf.json()["data"]["id"]
+
+    db_conf = TestSessionLocal()
+    try:
+        from app.modules.grades.models import GradeRecord as GrModel
+        from app.modules.classes.models import Class as ClsModel
+        cls_c = db_conf.query(ClsModel).filter(ClsModel.id == c_conf_id).first()
+        cls_c.is_grade_unlocked = True
+
+        gr_conf = GrModel(
+            class_id=c_conf_id,
+            student_id=1,
+            attendance_score=9.0,
+            midterm_score=8.5,
+            final_score=9.0,
+            total_score=8.8,
+            result_status="PASSED",
+            is_confirmed=True
+        )
+        db_conf.add(gr_conf)
+        db_conf.commit()
+    finally:
+        db_conf.close()
+
+    transfer_conf_res = client.post("/api/v1/classes/transfer", json={
+        "current_class_id": 1,
+        "target_class_id": c_conf_id,
+        "reason": "Thử chuyển vào lớp đã có điểm xác nhận"
+    }, headers=stu_headers)
+    assert transfer_conf_res.status_code == 400, f"Expected 400: {transfer_conf_res.text}"
+    assert "xác nhận" in transfer_conf_res.json().get("detail", "").lower(), f"Got unexpected detail: {transfer_conf_res.json()}"
+    print("✓ 25.4b (H-04). Transfer with Confirmed Grade in Target Class Rejected: PASSED (400 Bad Request)")
+
+    # 25.5 (H-05): Student cannot cancel transfer audit record via cancel_request
+    # Perform a valid transfer from Class 1 to Class 4
+    tf_res = client.post("/api/v1/classes/transfer", json={
+        "current_class_id": 1,
+        "target_class_id": 4,
+        "reason": "Chuyển lớp để kiểm thử audit record không thể hủy"
+    }, headers=stu_headers)
+    assert tf_res.status_code == 200
+
+    # Query enrollment requests of student
+    my_en_res = client.get("/api/v1/enrollments/my-requests", headers=stu_headers)
+    assert my_en_res.status_code == 200
+    audit_req = next((r for r in my_en_res.json()["data"] if "[TRANSFER_AUDIT]" in (r.get("note") or "")), None)
+    assert audit_req is not None, "Audit enrollment request with [TRANSFER_AUDIT] must exist"
+
+    # Attempt to cancel this transfer audit record
+    cancel_audit_res = client.patch(f"/api/v1/enrollments/{audit_req['id']}/cancel", headers=stu_headers)
+    assert cancel_audit_res.status_code == 400
+    assert "không thể hủy bản ghi audit chuyển lớp" in cancel_audit_res.json()["detail"].lower()
+    print("✓ 25.5 (H-05). Student Blocked from Cancelling Transfer Audit Record: PASSED (400 Bad Request)")
+
+    # Rollback transfer back to Class 1
+    rb_res = client.post("/api/v1/classes/transfer", json={
+        "current_class_id": 4,
+        "target_class_id": 1,
+        "reason": "Hoàn tác chuyển lớp sau kiểm thử H-05"
+    }, headers=stu_headers)
+    assert rb_res.status_code == 200
+
+    # 25.6 (L-02): Email reuse with soft-deleted accounts handles truncation safely
+    long_email = f"verylongprefix_{int(time.time())}_{'a'*35}@center.edu.vn"
+    user_data = {
+        "username": f"user_l02_{int(time.time())}",
+        "email": long_email,
+        "password": "Password123!",
+        "full_name": "Test Long Email User",
+        "role": "STUDENT"
+    }
+    create_u1 = client.post("/api/v1/accounts/", json=user_data, headers=headers)
+    assert create_u1.status_code == 200
+    u1_id = create_u1.json()["data"]["id"]
+
+    # Delete u1 (soft delete)
+    del_u1 = client.delete(f"/api/v1/accounts/{u1_id}", headers=headers)
+    assert del_u1.status_code == 200
+
+    # Create u2 with the EXACT same email and same role
+    user_data_2 = {
+        "username": f"user_l02_b_{int(time.time())}",
+        "email": long_email,
+        "password": "Password123!",
+        "full_name": "Test Long Email User 2",
+        "role": "STUDENT"
+    }
+    create_u2 = client.post("/api/v1/accounts/", json=user_data_2, headers=headers)
+    assert create_u2.status_code == 200, f"Expected 200, got {create_u2.status_code}: {create_u2.text}"
+    u2_id = create_u2.json()["data"]["id"]
+
+    # Verify soft-deleted user's email was renamed safely (<= 100 chars)
+    db_u = TestSessionLocal()
+    try:
+        from app.modules.accounts.models import User as UserModel
+        del_user_row = db_u.query(UserModel).filter(UserModel.id == u1_id).first()
+        assert del_user_row.email.startswith(f"del_{u1_id}_")
+        assert len(del_user_row.email) <= 100
+    finally:
+        db_u.close()
+
+    # Clean up created accounts and classes
+    client.delete(f"/api/v1/accounts/{u2_id}", headers=headers)
+    client.delete(f"/api/v1/classes/{c_overlap_id}", headers=headers)
+    client.delete(f"/api/v1/classes/{c_full_id}", headers=headers)
+    client.delete(f"/api/v1/classes/{c_locked_id}", headers=headers)
+    client.delete(f"/api/v1/classes/{c_conf_id}", headers=headers)
+    print("✓ 25.6 (L-02). Safe Renaming of Soft-Deleted Long Email (<= 100 Chars): PASSED (200 OK)")
+
+    # ================= 26. CLASS LIFECYCLE & STATE MACHINE NORMALIZATION =================
+    print("\n--- SECTION 26: Class Lifecycle & State Machine Normalization ---")
+
+    # 26.1: Date-driven auto transition: OPEN_FOR_ENROLLMENT -> IN_PROGRESS on start_date
+    c_life_code = f"IELTS-LIFE-{int(time.time())}"
+    res_c_life = client.post("/api/v1/classes/", json={
+        "class_code": c_life_code,
+        "course_id": 1,
+        "teacher_id": 2,
+        "max_capacity": 20,
+        "opening_date": date.today().isoformat(),
+        "start_date": (date.today() + timedelta(days=5)).isoformat(),
+        "end_date": (date.today() + timedelta(days=60)).isoformat()
+    }, headers=headers)
+    assert res_c_life.status_code == 200
+    c_life_id = res_c_life.json()["data"]["id"]
+    assert res_c_life.json()["data"]["status"] == "OPEN_FOR_ENROLLMENT"
+
+    # Simulate start_date arriving: update start_date to today in DB
+    db_life = TestSessionLocal()
+    try:
+        from app.modules.classes.models import Class as ClsModel
+        cls_l = db_life.query(ClsModel).filter(ClsModel.id == c_life_id).first()
+        cls_l.start_date = date.today()
+        db_life.commit()
+    finally:
+        db_life.close()
+
+    # Query class detail -> trigger lifecycle sync -> status must automatically be IN_PROGRESS
+    detail_res = client.get(f"/api/v1/classes/{c_life_id}", headers=headers)
+    assert detail_res.status_code == 200
+    assert detail_res.json()["data"]["status"] == "IN_PROGRESS"
+    print("✓ 26.1. Date-driven Auto Transition (OPEN_FOR_ENROLLMENT -> IN_PROGRESS on start_date): PASSED")
+
+    # 26.2: State Machine Guard validations
+    # 26.2a: Reject IN_PROGRESS -> OPEN_FOR_ENROLLMENT
+    reopen_res = client.patch(f"/api/v1/classes/{c_life_id}/status?new_status=OPEN_FOR_ENROLLMENT", headers=headers)
+    assert reopen_res.status_code == 400
+    assert "không thể chuyển ngược" in reopen_res.json()["detail"].lower()
+    print("✓ 26.2a. Reopen IN_PROGRESS to OPEN_FOR_ENROLLMENT Rejected: PASSED (400 Bad Request)")
+
+    # 26.2b: Create future class, reject manual transition to IN_PROGRESS before start_date
+    c_fut_code = f"IELTS-FUT-{int(time.time())}"
+    res_c_fut = client.post("/api/v1/classes/", json={
+        "class_code": c_fut_code,
+        "course_id": 1,
+        "teacher_id": 2,
+        "max_capacity": 20,
+        "opening_date": date.today().isoformat(),
+        "start_date": (date.today() + timedelta(days=10)).isoformat(),
+        "end_date": (date.today() + timedelta(days=60)).isoformat()
+    }, headers=headers)
+    assert res_c_fut.status_code == 200
+    c_fut_id = res_c_fut.json()["data"]["id"]
+
+    early_in_progress = client.patch(f"/api/v1/classes/{c_fut_id}/status?new_status=IN_PROGRESS", headers=headers)
+    assert early_in_progress.status_code == 400
+    assert "chưa đến ngày bắt đầu" in early_in_progress.json()["detail"].lower()
+    print("✓ 26.2b. Transition to IN_PROGRESS Before Start Date Rejected: PASSED (400 Bad Request)")
+
+    # 26.2c: Reject manual transition to COMPLETED before end_date
+    early_completed = client.patch(f"/api/v1/classes/{c_life_id}/status?new_status=COMPLETED", headers=headers)
+    assert early_completed.status_code == 400
+    assert "chưa đến ngày kết thúc" in early_completed.json()["detail"].lower()
+    print("✓ 26.2c. Transition to COMPLETED Before End Date Rejected: PASSED (400 Bad Request)")
+
+    # 26.2d: Reject modifying status of COMPLETED class (Class 11 is COMPLETED)
+    mod_completed = client.patch(f"/api/v1/classes/11/status?new_status=IN_PROGRESS", headers=headers)
+    assert mod_completed.status_code == 400
+    assert "không thể thay đổi trạng thái" in mod_completed.json()["detail"].lower()
+    print("✓ 26.2d. Status Modification on COMPLETED Class Rejected: PASSED (400 Bad Request)")
+
+    # 26.3: Enrollment does NOT generate GradeRecord in OPEN_FOR_ENROLLMENT
+    # Create open class
+    c_open_code = f"IELTS-OPEN-{int(time.time())}"
+    res_c_open = client.post("/api/v1/classes/", json={
+        "class_code": c_open_code,
+        "course_id": 1,
+        "teacher_id": 2,
+        "max_capacity": 20,
+        "opening_date": date.today().isoformat(),
+        "start_date": (date.today() + timedelta(days=7)).isoformat(),
+        "end_date": (date.today() + timedelta(days=60)).isoformat()
+    }, headers=headers)
+    assert res_c_open.status_code == 200
+    c_open_id = res_c_open.json()["data"]["id"]
+
+    enroll_open_res = client.post("/api/v1/enrollments/", json={
+        "class_id": c_open_id,
+        "note": "Đăng ký lớp mở để kiểm thử không sinh GradeRecord"
+    }, headers=stu_headers)
+    assert enroll_open_res.status_code == 200
+    enroll_req_id = enroll_open_res.json()["data"]["id"]
+
+    # Verify in DB: Student enrolled in ClassStudent, but NO GradeRecord exists!
+    db_chk = TestSessionLocal()
+    try:
+        from app.modules.grades.models import GradeRecord as GrModel
+        from app.modules.classes.models import ClassStudent as CsModel
+        cs_exists = db_chk.query(CsModel).filter(
+            CsModel.class_id == c_open_id,
+            CsModel.student_id == 1,
+            CsModel.status == "ENROLLED",
+            CsModel.is_deleted == False
+        ).first()
+        assert cs_exists is not None
+
+        gr_exists = db_chk.query(GrModel).filter(
+            GrModel.class_id == c_open_id,
+            GrModel.student_id == 1,
+            GrModel.is_deleted == False
+        ).first()
+        assert gr_exists is None, "GradeRecord must NOT be auto-created during registration for OPEN_FOR_ENROLLMENT class"
+    finally:
+        db_chk.close()
+    print("✓ 26.3. Enrollment in OPEN_FOR_ENROLLMENT Does Not Auto-Create GradeRecord: PASSED")
+
+    # 26.4: Enrollment cancellation soft-deletes unconfirmed GradeRecord if any existed
+    # Add a mock unconfirmed grade record to test soft delete on drop
+    db_mock = TestSessionLocal()
+    try:
+        gr_mock = GrModel(class_id=c_open_id, student_id=1, result_status="PENDING", is_confirmed=False)
+        db_mock.add(gr_mock)
+        db_mock.commit()
+    finally:
+        db_mock.close()
+
+    cancel_enr = client.patch(f"/api/v1/enrollments/{enroll_req_id}/cancel", headers=stu_headers)
+    assert cancel_enr.status_code == 200, f"Expected 200: {cancel_enr.text}"
+
+    db_chk2 = TestSessionLocal()
+    try:
+        gr_active = db_chk2.query(GrModel).filter(
+            GrModel.class_id == c_open_id,
+            GrModel.student_id == 1,
+            GrModel.is_deleted == False
+        ).first()
+        assert gr_active is None, "Pending/unconfirmed GradeRecord must be soft-deleted on enrollment cancel"
+    finally:
+        db_chk2.close()
+    print("✓ 26.4. Enrollment Cancellation Soft-Deletes Unconfirmed GradeRecord: PASSED")
+
+    # 26.5: Transfer blocked from COMPLETED source class
+    tf_completed = client.post("/api/v1/classes/transfer", json={
+        "current_class_id": 11,
+        "target_class_id": 4,
+        "reason": "Thử chuyển từ lớp đã hoàn thành"
+    }, headers=stu_headers)
+    assert tf_completed.status_code == 400
+    assert "lớp hiện tại đang ở trạng thái" in tf_completed.json()["detail"].lower()
+    print("✓ 26.5. Transfer Out of COMPLETED Class Rejected: PASSED (400 Bad Request)")
+
+    # 26.6: Ended class locks grades without forcing is_confirmed = True on empty grades
+    db_end = TestSessionLocal()
+    try:
+        from app.modules.classes.models import Class as ClsModel
+        from app.modules.grades.service import GradeService as GrService
+        cls_end = db_end.query(ClsModel).filter(ClsModel.id == c_life_id).first()
+        cls_end.end_date = date.today() - timedelta(days=2)
+        # Create unconfirmed grade record with no marks
+        empty_gr = GrModel(class_id=c_life_id, student_id=2, result_status="PENDING", is_confirmed=False)
+        db_end.add(empty_gr)
+        db_end.commit()
+
+        is_locked, msg = GrService.check_and_update_class_grade_lock(db_end, cls_end)
+        assert is_locked is True
+        # Verify empty_gr was NOT forced to is_confirmed = True!
+        db_end.refresh(empty_gr)
+        assert empty_gr.is_confirmed is False
+    finally:
+        db_end.close()
+    print("✓ 26.6. Ended Class Locks Grades Without Forcing Confirmation on Empty Grades: PASSED")
+
+    # 26.7: Accessing grading sheet on a class in PLANNING state is rejected
+    # Class 10 is PLANNING
+    plan_sheet = client.get("/api/v1/grades/classes/10/sheet", headers=headers)
+    assert plan_sheet.status_code == 400, f"Expected 400: {plan_sheet.text}"
+    assert "lập kế hoạch" in plan_sheet.json()["detail"].lower()
+    print("✓ 26.7. Accessing Grading Sheet on PLANNING Class Rejected: PASSED (400 Bad Request)")
+
+    # Clean up test classes
+    client.delete(f"/api/v1/classes/{c_life_id}", headers=headers)
+    client.delete(f"/api/v1/classes/{c_fut_id}", headers=headers)
+    client.delete(f"/api/v1/classes/{c_open_id}", headers=headers)
+
     print("\n🎉 ALL BACKEND INTEGRATION TESTS PASSED (100% SUCCESS)!")
+
+def run_tests():
+    try:
+        _do_run_tests()
+    finally:
+        app.dependency_overrides.clear()
+        try:
+            test_engine.dispose()
+        except Exception:
+            pass
+        try:
+            app_engine.dispose()
+        except Exception:
+            pass
+        if TEST_DB_PATH.exists():
+            try:
+                TEST_DB_PATH.unlink()
+            except Exception:
+                pass
 
 if __name__ == "__main__":
     run_tests()

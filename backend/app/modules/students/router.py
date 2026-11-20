@@ -1,13 +1,37 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.permissions import require_roles, RoleEnum, get_current_user_payload
 from app.common.response import ApiResponse
+from app.modules.students.models import Student
 from app.modules.students.schemas import StudentCreate, StudentUpdate, StudentResponse, EnrolledClassHistoryItem
 from app.modules.students.service import StudentService
 
 router = APIRouter()
+
+
+def _assert_can_view_student(db: Session, payload: dict, student_id: int) -> None:
+    """Scope student PII/history access to self, wards, or academic managers."""
+    role = payload.get("role")
+    if role in (RoleEnum.ADMIN.value, RoleEnum.ACADEMIC_STAFF.value, RoleEnum.TEACHER.value):
+        return
+    user_id = int(payload.get("sub", 0) or 0)
+    if role == RoleEnum.STUDENT.value:
+        own = db.query(Student).filter(Student.user_id == user_id, Student.is_deleted == False).first()
+        if not own or own.id != student_id:
+            raise HTTPException(status_code=403, detail="Bạn chỉ được xem thông tin của chính mình.")
+        return
+    if role == RoleEnum.PARENT.value:
+        from app.modules.progression_parent.models import ParentStudent
+        link = db.query(ParentStudent).filter(
+            ParentStudent.parent_user_id == user_id,
+            ParentStudent.student_id == student_id
+        ).first()
+        if not link:
+            raise HTTPException(status_code=403, detail="Bạn chỉ được xem thông tin của học viên mình giám hộ.")
+        return
+    raise HTTPException(status_code=403, detail="Vai trò không được phép xem thông tin học viên.")
 
 @router.post("/", response_model=ApiResponse[StudentResponse], summary="FR-18: Thêm học viên (Admin/Staff)")
 def create_student(
@@ -34,6 +58,7 @@ def get_student(
     db: Session = Depends(get_db),
     payload: dict = Depends(get_current_user_payload)
 ):
+    _assert_can_view_student(db, payload, student_id)
     student = StudentService.get_student(db, student_id)
     return ApiResponse(data=student, message="Thông tin chi tiết học viên")
 
@@ -53,6 +78,7 @@ def get_student_history(
     db: Session = Depends(get_db),
     payload: dict = Depends(get_current_user_payload)
 ):
+    _assert_can_view_student(db, payload, student_id)
     history = StudentService.get_learning_history(db, student_id)
     return ApiResponse(data=history, message="Lịch sử học tập của học viên")
 

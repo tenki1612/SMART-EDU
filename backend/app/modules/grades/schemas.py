@@ -43,10 +43,10 @@ class GradeRecordResponse(BaseModel):
     student_id: int
     student_code: str
     student_name: str
-    attendance_score: float
-    midterm_score: float
-    final_score: float
-    total_score: float
+    attendance_score: Optional[float] = None
+    midterm_score: Optional[float] = None
+    final_score: Optional[float] = None
+    total_score: Optional[float] = None
     result_status: str # PENDING, PASSED, FAILED
     is_confirmed: bool
     note: Optional[str] = None
@@ -59,10 +59,10 @@ class ClassGradingSheetStudent(BaseModel):
     student_code: str
     full_name: str
     avatar_url: Optional[str] = None
-    attendance_score: float
-    midterm_score: float
-    final_score: float
-    total_score: float
+    attendance_score: Optional[float] = None
+    midterm_score: Optional[float] = None
+    final_score: Optional[float] = None
+    total_score: Optional[float] = None
     result_status: str
     is_confirmed: bool
     note: Optional[str] = None

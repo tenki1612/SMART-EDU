@@ -78,9 +78,9 @@ export const GradesView = () => {
 
   const loadClasses = async () => {
     try {
-      // Giảng viên chỉ tải các lớp do chính mình phụ trách/giảng dạy
+      // Giảng viên chỉ tải các lớp do chính mình phụ trách/giảng dạy; loại trừ lớp đang lập kế hoạch (PLANNING) chưa mở sổ điểm
       const res = await classesApi.list(isTeacher ? { my_classes: true } : {});
-      const clsList = res.data || [];
+      const clsList = (res.data || []).filter((c) => c.status !== 'PLANNING');
       setClasses(clsList);
       if (clsList.length > 0) {
         if (!selectedClassId || !clsList.some((c) => c.id === selectedClassId)) {

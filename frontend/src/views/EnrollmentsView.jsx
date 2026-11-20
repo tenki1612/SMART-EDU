@@ -37,6 +37,30 @@ export const EnrollmentsView = () => {
   const [selectedClassToRegister, setSelectedClassToRegister] = useState(null);
   const [registerNote, setRegisterNote] = useState('');
   const [filterStatus, setFilterStatus] = useState('ALL');
+  const [prereqCheck, setPrereqCheck] = useState(null);
+
+  useEffect(() => {
+    if (selectedClassToRegister && isStudent) {
+      setPrereqCheck({ loading: true, eligible: true, message: '' });
+      enrollmentsApi.checkPrerequisite(selectedClassToRegister.id)
+        .then(res => {
+          setPrereqCheck({
+            loading: false,
+            eligible: res.data?.is_eligible,
+            message: res.data?.message
+          });
+        })
+        .catch(err => {
+          setPrereqCheck({
+            loading: false,
+            eligible: false,
+            message: err.message
+          });
+        });
+    } else {
+      setPrereqCheck(null);
+    }
+  }, [selectedClassToRegister, isStudent]);
 
   const loadData = async () => {
     try {
@@ -93,6 +117,47 @@ export const EnrollmentsView = () => {
       loadData();
     } catch (e) {
       toast.error(e.message || 'Không thể hủy yêu cầu');
+    }
+  };
+
+  const handleApproveRequest = async (id) => {
+    const isConfirmed = await confirm({
+      title: 'Phê duyệt yêu cầu ghi danh',
+      message: 'Bạn có chắc chắn muốn phê duyệt yêu cầu này? Học viên sẽ được thêm vào lớp học.',
+      confirmText: 'Phê duyệt',
+      cancelText: 'Hủy',
+      type: 'success',
+    });
+    if (!isConfirmed) return;
+    try {
+      await enrollmentsApi.approve(id);
+      toast.success('Đã phê duyệt yêu cầu ghi danh!');
+      loadData();
+    } catch (e) {
+      toast.error(e.message || 'Không thể phê duyệt yêu cầu');
+    }
+  };
+
+  const handleRejectRequest = async (id) => {
+    const reason = window.prompt('Nhập lý do từ chối yêu cầu ghi danh (bắt buộc):', '');
+    if (!reason || !reason.trim()) {
+      toast.error('Vui lòng nhập lý do từ chối.');
+      return;
+    }
+    const isConfirmed = await confirm({
+      title: 'Từ chối yêu cầu ghi danh',
+      message: `Từ chối với lý do: "${reason.trim()}". Bạn có chắc chắn không?`,
+      confirmText: 'Từ chối',
+      cancelText: 'Hủy',
+      type: 'warning',
+    });
+    if (!isConfirmed) return;
+    try {
+      await enrollmentsApi.reject(id, reason.trim());
+      toast.success('Đã từ chối yêu cầu ghi danh!');
+      loadData();
+    } catch (e) {
+      toast.error(e.message || 'Không thể từ chối yêu cầu');
     }
   };
 
@@ -368,7 +433,7 @@ export const EnrollmentsView = () => {
                         </td>
 
                         <td className="p-4 text-slate-500 tabular-nums font-medium">
-                          {new Date(r.request_date).toLocaleDateString('vi-VN')}
+                          {r.request_date ? new Date(r.request_date).toLocaleDateString('vi-VN') : '—'}
                         </td>
 
                         <td className="p-4 text-center">
@@ -416,10 +481,33 @@ export const EnrollmentsView = () => {
 
                         <td className="p-4 pr-5 text-right">
                           {isStaffOrAdmin && (
-                            <span className="text-emerald-700 font-bold text-xs bg-emerald-50 border border-emerald-200/80 px-2.5 py-1 rounded-xl inline-flex items-center gap-1">
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                              <span>Ghi danh trực tiếp</span>
-                            </span>
+                            r.status === 'PENDING' ? (
+                              <div className="flex justify-end gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleApproveRequest(r.id)}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold border border-emerald-200 rounded-xl cursor-pointer transition text-xs"
+                                  title="Phê duyệt yêu cầu ghi danh"
+                                >
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                  <span>Duyệt</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRejectRequest(r.id)}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold border border-rose-200 rounded-xl cursor-pointer transition text-xs"
+                                  title="Từ chối yêu cầu ghi danh (bắt buộc nhập lý do)"
+                                >
+                                  <XCircle className="w-3.5 h-3.5" />
+                                  <span>Từ chối</span>
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-emerald-700 font-bold text-xs bg-emerald-50 border border-emerald-200/80 px-2.5 py-1 rounded-xl inline-flex items-center gap-1">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                <span>Ghi danh trực tiếp</span>
+                              </span>
+                            )
                           )}
 
                           {isStudent && (
@@ -484,6 +572,19 @@ export const EnrollmentsView = () => {
                 <div className="font-bold">Khóa đào tạo: {selectedClassToRegister.course_title}</div>
                 <div className="text-[11px] text-indigo-700">Mục tiêu đầu ra: {selectedClassToRegister.target_level}</div>
                 <div className="text-[11px] text-slate-500">Giáo viên: {selectedClassToRegister.teacher_name || 'Đang phân công'}</div>
+                
+                {/* BR-01: Hiển thị trạng thái kiểm tra điều kiện tiên quyết */}
+                {prereqCheck && !prereqCheck.loading && (
+                  <div className={`p-2.5 rounded-xl border text-[11px] font-semibold flex items-start gap-2 ${
+                    prereqCheck.eligible
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                      : 'bg-rose-50 border-rose-200 text-rose-800'
+                  }`}>
+                    <span className="font-bold shrink-0">{prereqCheck.eligible ? '✓ Đủ điều kiện:' : '✕ Chưa đủ điều kiện:'}</span>
+                    <span>{prereqCheck.message}</span>
+                  </div>
+                )}
+
                 <div className="text-[11px] text-indigo-900 bg-white/80 p-2.5 rounded-xl border border-indigo-200 mt-2">
                   <span className="font-bold block text-indigo-800">Quy trình đăng ký:</span>
                   <span className="text-slate-600">Yêu cầu đăng ký sẽ được gửi tới Ban Quản trị / Nhân viên học vụ để kiểm tra sĩ số, xác nhận học phí và ghi danh vào lớp.</span>
@@ -513,10 +614,11 @@ export const EnrollmentsView = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-xs cursor-pointer flex items-center gap-1.5 active:scale-95"
+                  disabled={prereqCheck?.eligible === false || prereqCheck?.loading}
+                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-xs cursor-pointer flex items-center gap-1.5 active:scale-95 disabled:bg-slate-300 disabled:cursor-not-allowed"
                 >
                   <Send className="w-3.5 h-3.5" />
-                  <span>Gửi yêu cầu đăng ký</span>
+                  <span>{prereqCheck?.loading ? 'Đang kiểm tra điều kiện...' : 'Gửi yêu cầu đăng ký'}</span>
                 </button>
               </div>
             </form>

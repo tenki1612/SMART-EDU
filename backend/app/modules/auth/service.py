@@ -246,8 +246,7 @@ class AuthService:
                 phone=user.phone or "",
                 channel="EMAIL",
                 target_masked=masked_email,
-                reset_code=otp_code,
-                expires_in_minutes=RESET_CODE_EXPIRY_MINUTES,
+                    expires_in_minutes=RESET_CODE_EXPIRY_MINUTES,
                 message=resp_message
             )
 
@@ -299,7 +298,6 @@ class AuthService:
             phone=user.phone or "",
             channel="EMAIL",
             target_masked=masked_email,
-            reset_code=otp_code,
             expires_in_minutes=RESET_CODE_EXPIRY_MINUTES,
             message=resp_message
         )

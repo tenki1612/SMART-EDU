@@ -31,6 +31,7 @@ export const SchedulesView = () => {
   const canManage = ['ADMIN', 'ACADEMIC_STAFF'].includes(user?.role || '');
   const isTeacher = user?.role === 'TEACHER';
   const isStudent = user?.role === 'STUDENT';
+  const isParent = user?.role === 'PARENT';
 
   // Data states
   const [schedules, setSchedules] = useState([]);
@@ -110,7 +111,8 @@ export const SchedulesView = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const fetchPersonal = isTeacher || isStudent || showPersonalOnly;
+      // Phụ huynh cũng chỉ xem lịch của con mình (backend đã hỗ trợ scope PARENT).
+      const fetchPersonal = isTeacher || isStudent || isParent || showPersonalOnly;
       const [resSchedules, resRooms, resTeachers, resClasses] = await Promise.all([
         fetchPersonal ? schedulesApi.getPersonal() : schedulesApi.list(),
         classroomsApi.list().catch(() => ({ data: [] })),
@@ -195,6 +197,12 @@ export const SchedulesView = () => {
       if (s.session_date && (!maxDate || s.session_date > maxDate)) maxDate = s.session_date;
     });
 
+    // Mở rộng phạm vi tuần theo thời gian bắt đầu và kết thúc của các lớp học
+    classes.forEach(c => {
+      if (c.start_date && (!minDate || c.start_date < minDate)) minDate = c.start_date;
+      if (c.end_date && (!maxDate || c.end_date > maxDate)) maxDate = c.end_date;
+    });
+
     if (!minDate || !maxDate) {
       return { minDate: null, maxDate: null, weeks: [] };
     }
@@ -228,7 +236,7 @@ export const SchedulesView = () => {
     }
 
     return { minDate, maxDate, weeks };
-  }, [schedules]);
+  }, [schedules, classes]);
 
   // Filtered schedules by Search text and Teacher
   const filteredSchedules = useMemo(() => {
@@ -723,12 +731,6 @@ export const SchedulesView = () => {
               <CalendarDays className="w-4 h-4 text-indigo-600" />
               <span>{weekTitle}</span>
             </div>
-
-            {semesterInfo.minDate && (
-              <span className="text-[11px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200/80 px-2.5 py-1 rounded-xl hidden sm:inline">
-                Toàn khóa: {semesterInfo.minDate} → {semesterInfo.maxDate} ({semesterInfo.weeks.length} tuần)
-              </span>
-            )}
           </div>
 
           {/* Timetable Grid Table */}
@@ -773,11 +775,11 @@ export const SchedulesView = () => {
                         const dateStr = toLocalDateStr(d);
                         const isToday = dateStr === todayStr;
 
-                        // Find sessions matching this date and time range
+                        // Find sessions matching this date and time range (proper time overlap)
                         const cellSessions = filteredSchedules.filter(s => {
                           if (s.session_date !== dateStr) return false;
-                          // match slot start/end or overlap
-                          return s.start_time >= slot.start && s.start_time < slot.end;
+                          // Buổi học giao nhau hoặc nằm trong khung giờ của slot
+                          return s.start_time < slot.end && s.end_time > slot.start;
                         });
 
                         return (
@@ -930,11 +932,6 @@ export const SchedulesView = () => {
                 Đã qua ({pastCount})
               </button>
             </div>
-            {semesterInfo.minDate && (
-              <span className="text-[11px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200/80 px-2.5 py-1 rounded-xl">
-                Toàn khóa: {semesterInfo.minDate} → {semesterInfo.maxDate}
-              </span>
-            )}
           </div>
 
           <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-hidden">

@@ -218,7 +218,7 @@ export const DashboardView = ({ onTabChange = () => {} }) => {
               onClick={() => onTabChange('progression')}
               className="px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200/70 text-xs font-bold transition cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-2xs"
             >
-              <UserCheck className="w-3.5 h-3.5" /> Duyệt chuyển khóa
+              <ArrowUpRight className="w-3.5 h-3.5" /> Lộ trình học tập
             </button>
           </div>
         </div>
@@ -301,7 +301,7 @@ export const DashboardView = ({ onTabChange = () => {} }) => {
                   <UserCheck className="w-4 h-4 text-amber-600" /> Đơn đăng ký lớp mới nhất
                 </h3>
                 <button
-                  onClick={() => onTabChange('progression')}
+                  onClick={() => onTabChange('enrollments')}
                   className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer transition"
                 >
                   Xét duyệt ngay <ArrowRight className="w-3.5 h-3.5" />
@@ -671,7 +671,7 @@ export const DashboardView = ({ onTabChange = () => {} }) => {
               onClick={() => onTabChange('progression')}
               className="px-3.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-2xs border border-amber-200/70 active:scale-95"
             >
-              <ArrowUpRight className="w-3.5 h-3.5 text-amber-700" /> Chuyển khóa học
+              <ArrowUpRight className="w-3.5 h-3.5 text-amber-700" /> Lộ trình học tập
             </button>
           </div>
         </div>

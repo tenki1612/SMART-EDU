@@ -12,6 +12,36 @@ from app.modules.enrollments.service import EnrollmentService
 
 router = APIRouter()
 
+@router.get("/check-prerequisite", summary="BR-01: Kiểm tra điều kiện tiên quyết khi đăng ký lớp")
+def check_prerequisite(
+    class_id: int = Query(...),
+    student_id: Optional[int] = Query(None),
+    payload: dict = Depends(get_current_user_payload),
+    db: Session = Depends(get_db)
+):
+    role = payload.get("role")
+    user_id = int(payload.get("sub"))
+    if role == RoleEnum.STUDENT:
+        student = db.query(Student).filter(Student.user_id == user_id, Student.is_deleted == False).first()
+        if not student:
+            from app.core.exceptions import NotFoundException
+            raise NotFoundException("Hồ sơ học viên", user_id)
+        target_student_id = student.id
+    elif role in [RoleEnum.ADMIN, RoleEnum.ACADEMIC_STAFF]:
+        if not student_id:
+            from app.core.exceptions import BusinessException
+            raise BusinessException("Cần cung cấp student_id để kiểm tra.")
+        target_student_id = student_id
+    else:
+        from app.core.exceptions import BusinessException
+        raise BusinessException("Không có quyền thực hiện kiểm tra này.")
+
+    is_eligible, msg = EnrollmentService.check_prerequisite_eligibility(db, target_student_id, class_id)
+    return ApiResponse(
+        data={"is_eligible": is_eligible, "message": msg},
+        message="Kiểm tra điều kiện tiên quyết hoàn tất"
+    )
+
 @router.post("/", response_model=ApiResponse[EnrollmentRequestResponse], summary="FR-52: Đăng ký lớp học (Học viên)")
 def create_enrollment_request(
     data: EnrollmentCreateRequest,

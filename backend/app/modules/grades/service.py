@@ -1,5 +1,5 @@
 from typing import List, Optional
-from datetime import datetime, date, timezone
+from datetime import datetime, date, timezone, timedelta
 from sqlalchemy.orm import Session
 from app.modules.grades.models import GradeRecord, GradeLockHistory
 from app.modules.classes.models import Class, ClassStudent
@@ -37,35 +37,52 @@ class GradeService:
     def check_and_update_class_grade_lock(db: Session, cls: Class) -> tuple[bool, str]:
         """
         Kiểm tra trạng thái khóa điểm của lớp học:
-        - Nếu Admin/Staff đã mở khóa thủ công: cho phép sửa.
+        - Nếu Admin/Staff đã mở khóa thủ công: cho phép sửa trong thời hạn 72 giờ. Hết 72h tự động khóa lại (F-07).
         - Nếu lớp học đã kết thúc (today > cls.end_date) hoặc status COMPLETED: tự động khóa sổ, chặn sửa điểm.
         - Nếu bảng điểm đã được xác nhận chính thức: khóa sổ.
         """
         today = date.today()
-        # 1. Nếu Admin/Staff mở khóa thủ công thì cho phép giảng viên sửa
+        # 1. Nếu Admin/Staff mở khóa thủ công thì kiểm tra hiệu lực 72 giờ
         if cls.is_grade_unlocked:
-            return False, "Bảng điểm đang được mở khóa thủ công bởi Quản trị viên/Học vụ."
+            latest_unlock = db.query(GradeLockHistory).filter(
+                GradeLockHistory.class_id == cls.id,
+                GradeLockHistory.action == "UNLOCK"
+            ).order_by(GradeLockHistory.id.desc()).first()
 
-        # 2. Lớp học đã kết thúc dựa trên end_date của lớp (LOP_HOC)
-        if cls.end_date and today > cls.end_date:
-            # Tự động khóa các bản ghi điểm chưa khóa
-            unlocked = db.query(GradeRecord).filter(
-                GradeRecord.class_id == cls.id,
-                GradeRecord.is_confirmed == False,
-                GradeRecord.is_deleted == False
-            ).all()
-            if unlocked:
-                for u in unlocked:
-                    u.is_confirmed = True
-                hist = GradeLockHistory(
+            is_expired = False
+            if latest_unlock and latest_unlock.performed_at:
+                unlock_time = latest_unlock.performed_at
+                if unlock_time.tzinfo is None:
+                    unlock_time = unlock_time.replace(tzinfo=timezone.utc)
+                now_utc = datetime.now(timezone.utc)
+                if now_utc > unlock_time + timedelta(hours=72):
+                    is_expired = True
+
+            if is_expired:
+                # Tự động khóa lại khi hết hạn 72h
+                cls.is_grade_unlocked = False
+                grades = db.query(GradeRecord).filter(
+                    GradeRecord.class_id == cls.id,
+                    GradeRecord.is_deleted == False
+                ).all()
+                for g in grades:
+                    g.is_confirmed = True
+
+                auto_hist = GradeLockHistory(
                     class_id=cls.id,
                     action="AUTO_LOCK",
                     performed_by=None,
                     performed_at=datetime.now(timezone.utc),
-                    reason=f"Hệ thống tự động khóa sổ điểm do lớp học đã kết thúc ngày {cls.end_date}."
+                    reason="Hệ thống tự động khóa sổ điểm do hết thời hạn mở khóa 72 giờ."
                 )
-                db.add(hist)
+                db.add(auto_hist)
                 db.commit()
+                return True, "Bảng điểm đã tự động khóa lại do hết thời hạn mở khóa 72 giờ."
+
+            return False, "Bảng điểm đang được mở khóa thủ công bởi Quản trị viên/Học vụ (thời hạn 72 giờ)."
+
+        # 2. Lớp học đã kết thúc dựa trên end_date của lớp (LOP_HOC)
+        if cls.end_date and today > cls.end_date:
             return True, f"Bảng điểm đã được hệ thống tự động khóa do lớp học đã kết thúc ngày {cls.end_date}."
 
         if cls.status == "COMPLETED":
@@ -88,6 +105,9 @@ class GradeService:
         cls = db.query(Class).filter(Class.id == class_id, Class.is_deleted == False).first()
         if not cls:
             raise NotFoundException("Lớp học", class_id)
+
+        if cls.status == "PLANNING":
+            raise BusinessException("Lớp học đang trong giai đoạn lập kế hoạch (PLANNING), chưa mở sổ điểm.")
 
         # Tự động đồng bộ và kiểm tra khóa điểm nếu lớp học đã kết thúc
         GradeService.check_and_update_class_grade_lock(db, cls)
@@ -136,6 +156,9 @@ class GradeService:
         if not cls:
             raise NotFoundException("Lớp học", data.class_id)
 
+        if cls.status == "PLANNING":
+            raise BusinessException("Lớp học đang trong giai đoạn lập kế hoạch (PLANNING), chưa mở sổ điểm.")
+
         # Kiểm tra trạng thái khóa điểm (Tự động khóa khi lớp kết thúc, hoặc khóa chính thức)
         is_locked, lock_msg = GradeService.check_and_update_class_grade_lock(db, cls)
         if is_locked:
@@ -147,6 +170,18 @@ class GradeService:
                     0.0 <= item.midterm_score <= 10.0 and 
                     0.0 <= item.final_score <= 10.0):
                 raise BusinessException(f"Điểm số của học viên ID {item.student_id} phải nằm trong khoảng từ 0 đến 10.")
+
+            # Chống ghi điểm "ma": học viên phải đang thuộc sĩ số lớp học.
+            enrolled = db.query(ClassStudent.id).filter(
+                ClassStudent.class_id == data.class_id,
+                ClassStudent.student_id == item.student_id,
+                ClassStudent.status == "ENROLLED",
+                ClassStudent.is_deleted == False
+            ).first()
+            if not enrolled:
+                raise BusinessException(
+                    f"Học viên ID {item.student_id} không thuộc lớp học này, không thể nhập điểm."
+                )
 
             grade = db.query(GradeRecord).filter(
                 GradeRecord.class_id == data.class_id,
@@ -183,6 +218,9 @@ class GradeService:
         if not cls:
             raise NotFoundException("Lớp học", class_id)
 
+        if cls.status == "PLANNING":
+            raise BusinessException("Lớp học đang trong giai đoạn lập kế hoạch (PLANNING), chưa mở sổ điểm.")
+
         grades = db.query(GradeRecord).filter(
             GradeRecord.class_id == class_id,
             GradeRecord.is_deleted == False
@@ -211,6 +249,9 @@ class GradeService:
         cls = db.query(Class).filter(Class.id == class_id, Class.is_deleted == False).first()
         if not cls:
             raise NotFoundException("Lớp học", class_id)
+
+        if cls.status == "PLANNING":
+            raise BusinessException("Lớp học đang trong giai đoạn lập kế hoạch (PLANNING), chưa mở sổ điểm.")
 
         grades = db.query(GradeRecord).filter(
             GradeRecord.class_id == class_id,
@@ -278,6 +319,9 @@ class GradeService:
         if not cls:
             raise NotFoundException("Lớp học", class_id)
 
+        if cls.status == "PLANNING":
+            raise BusinessException("Lớp học đang trong giai đoạn lập kế hoạch (PLANNING), chưa mở sổ điểm.")
+
         is_locked, lock_msg = GradeService.check_and_update_class_grade_lock(db, cls)
         if is_locked:
             raise BusinessException(f"Bảng điểm của lớp học đang bị khóa: {lock_msg}")
@@ -291,14 +335,27 @@ class GradeService:
             ClassStudent.class_id == class_id,
             ClassStudent.student_id == data.student_id
         ).first()
-        if not cs:
-            cs = ClassStudent(class_id=class_id, student_id=data.student_id, status="ENROLLED")
-            db.add(cs)
-            cls.current_enrolled = (cls.current_enrolled or 0) + 1
-        elif cs.is_deleted:
-            cs.is_deleted = False
-            cs.status = "ENROLLED"
-            cls.current_enrolled = (cls.current_enrolled or 0) + 1
+        needs_increment = (cs is None) or cs.is_deleted
+        if needs_increment:
+            # Cấp chỗ nguyên tử: không cho vượt sĩ số kể cả khi thêm từ sổ điểm.
+            claimed = db.query(Class).filter(
+                Class.id == class_id,
+                Class.is_deleted == False,
+                Class.current_enrolled < Class.max_capacity
+            ).update(
+                {Class.current_enrolled: Class.current_enrolled + 1},
+                synchronize_session="fetch"
+            )
+            if claimed == 0:
+                raise BusinessException(
+                    f"Lớp học {cls.class_code} đã đủ sĩ số ({cls.current_enrolled}/{cls.max_capacity})."
+                )
+            if cs is None:
+                cs = ClassStudent(class_id=class_id, student_id=data.student_id, status="ENROLLED")
+                db.add(cs)
+            else:
+                cs.is_deleted = False
+                cs.status = "ENROLLED"
 
         # Khởi tạo hoặc cập nhật bản ghi điểm
         grade = db.query(GradeRecord).filter(
@@ -357,6 +414,9 @@ class GradeService:
         cls = db.query(Class).filter(Class.id == class_id, Class.is_deleted == False).first()
         if not cls:
             raise NotFoundException("Lớp học", class_id)
+
+        if cls.status == "PLANNING":
+            raise BusinessException("Lớp học đang trong giai đoạn lập kế hoạch (PLANNING), chưa mở sổ điểm.")
 
         is_locked, lock_msg = GradeService.check_and_update_class_grade_lock(db, cls)
         if is_locked:

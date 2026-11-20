@@ -57,7 +57,13 @@ export const Sidebar = ({
       groupName: 'ĐÁNH GIÁ & TIẾN ĐỘ',
       items: [
         { id: 'grades', label: 'Sổ điểm & Kết quả', icon: FileSpreadsheet, roles: ['ADMIN', 'ACADEMIC_STAFF', 'TEACHER', 'STUDENT', 'PARENT'] },
-        { id: 'progression', label: 'Chuyển khóa học', icon: ArrowUpRight, roles: ['ADMIN', 'ACADEMIC_STAFF', 'STUDENT', 'PARENT'] },
+        { id: 'progression', label: 'Lộ trình học tập', icon: ArrowUpRight, roles: ['ADMIN', 'ACADEMIC_STAFF', 'STUDENT', 'PARENT'] },
+      ],
+    },
+    {
+      groupName: 'CỔNG PHỤ HUYNH',
+      items: [
+        { id: 'wards', label: 'Giám hộ con em', icon: Users, roles: ['PARENT'] },
       ],
     },
     {

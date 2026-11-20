@@ -44,6 +44,18 @@ class AccountService:
         # Check duplicate username
         if db.query(User).filter(User.username == data.username).first():
             raise BusinessException(f"Tên đăng nhập '{data.username}' đã tồn tại trong hệ thống. Vui lòng chọn tên đăng nhập khác.")
+
+        # Giải phóng ràng buộc UNIQUE (Email, VaiTro) nếu bản ghi trước đó đã bị xóa mềm (L-02)
+        deleted_same_role = db.query(User).filter(
+            User.email == data.email,
+            User.role == data.role,
+            User.is_deleted == True
+        ).first()
+        if deleted_same_role:
+            prefix = f"del_{deleted_same_role.id}_"
+            max_len = 100 - len(prefix)
+            deleted_same_role.email = f"{prefix}{deleted_same_role.email[:max_len]}"
+            db.flush()
         
         # Check duplicate email
         existing_email_user = db.query(User).filter(
@@ -177,7 +189,20 @@ class AccountService:
             raise NotFoundException("Người dùng", user_id)
         
         if data.email:
-            existing = db.query(User).filter(User.email == data.email, User.id != user_id).first()
+            # Giải phóng ràng buộc nếu trùng với bản ghi soft-deleted cùng vai trò (L-02)
+            deleted_same_role = db.query(User).filter(
+                User.email == data.email,
+                User.role == user.role,
+                User.is_deleted == True,
+                User.id != user_id
+            ).first()
+            if deleted_same_role:
+                prefix = f"del_{deleted_same_role.id}_"
+                max_len = 100 - len(prefix)
+                deleted_same_role.email = f"{prefix}{deleted_same_role.email[:max_len]}"
+                db.flush()
+
+            existing = db.query(User).filter(User.email == data.email, User.is_deleted == False, User.id != user_id).first()
             if existing:
                 raise BusinessException("Email đã được sử dụng bởi tài khoản khác.")
             user.email = data.email

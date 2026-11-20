@@ -85,8 +85,10 @@ def unlock_grades(
 def get_grade_lock_history(
     class_id: int,
     db: Session = Depends(get_db),
-    _ = Depends(require_roles([RoleEnum.ADMIN, RoleEnum.ACADEMIC_STAFF, RoleEnum.TEACHER]))
+    payload: dict = Depends(require_roles([RoleEnum.ADMIN, RoleEnum.ACADEMIC_STAFF, RoleEnum.TEACHER]))
 ):
+    if payload.get("role") == RoleEnum.TEACHER.value:
+        _verify_teacher_class_access(db, int(payload.get("sub", 0) or 0), class_id)
     history = GradeService.get_lock_history(db, class_id)
     return ApiResponse(data=history, message="Lịch sử khóa / mở khóa điểm của lớp")
 
@@ -99,8 +101,39 @@ def get_grade_lock_status(
     cls = db.query(Class).filter(Class.id == class_id, Class.is_deleted == False).first()
     if not cls:
         raise HTTPException(status_code=404, detail=f"Không tìm thấy lớp học ID {class_id}")
-    is_locked, reason = GradeService.check_and_update_class_grade_lock(db, cls)
     user_role = payload.get("role")
+    user_id = int(payload.get("sub", 0) or 0)
+
+    # Scope checks: teachers/students/parents may only query classes in their scope
+    if user_role == RoleEnum.TEACHER.value:
+        _verify_teacher_class_access(db, user_id, class_id)
+    elif user_role == RoleEnum.STUDENT.value:
+        own = db.query(Student).filter(Student.user_id == user_id, Student.is_deleted == False).first()
+        from app.modules.classes.models import ClassStudent
+        enrolled = own and db.query(ClassStudent.id).filter(
+            ClassStudent.class_id == class_id,
+            ClassStudent.student_id == own.id,
+            ClassStudent.is_deleted == False
+        ).first()
+        if not enrolled:
+            raise HTTPException(status_code=403, detail="Bạn chỉ được xem trạng thái khóa điểm của lớp mình tham gia.")
+    elif user_role == RoleEnum.PARENT.value:
+        from app.modules.progression_parent.models import ParentStudent
+        from app.modules.classes.models import ClassStudent
+        ward_ids = [r[0] for r in db.query(ParentStudent.student_id).filter(
+            ParentStudent.parent_user_id == user_id
+        ).all()]
+        ward_in_class = None
+        if ward_ids:
+            ward_in_class = db.query(ClassStudent.id).filter(
+                ClassStudent.class_id == class_id,
+                ClassStudent.student_id.in_(ward_ids),
+                ClassStudent.is_deleted == False
+            ).first()
+        if not ward_in_class:
+            raise HTTPException(status_code=403, detail="Phụ huynh chỉ được xem trạng thái khóa điểm của lớp con mình.")
+
+    is_locked, reason = GradeService.check_and_update_class_grade_lock(db, cls)
     can_edit = (not is_locked) and (user_role in [RoleEnum.TEACHER.value, RoleEnum.ADMIN.value, RoleEnum.ACADEMIC_STAFF.value])
     return ApiResponse(data={
         "class_id": class_id,

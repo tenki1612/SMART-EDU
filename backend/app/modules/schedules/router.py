@@ -7,7 +7,7 @@ from app.core.permissions import require_roles, RoleEnum, get_current_user_paylo
 from app.common.response import ApiResponse
 from app.modules.schedules.schemas import (
     ScheduleSessionCreate, ScheduleSessionUpdate, ScheduleSessionResponse,
-    ConflictCheckRequest, ConflictCheckResponse
+    ScheduleRecurringCreate, ConflictCheckRequest, ConflictCheckResponse
 )
 from app.modules.schedules.service import ScheduleService
 from app.modules.schedules.conflict_checker import ScheduleConflictChecker
@@ -17,7 +17,8 @@ router = APIRouter()
 @router.post("/check-conflicts", response_model=ApiResponse[ConflictCheckResponse], summary="FR-65: Kiểm tra xung đột thời khóa biểu")
 def check_conflicts(
     data: ConflictCheckRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: dict = Depends(get_current_user_payload)
 ):
     has_conflict, c_type, msg = ScheduleConflictChecker.check_conflicts(
         db=db,
@@ -45,6 +46,18 @@ def create_schedule_session(
 ):
     session = ScheduleService.create_session(db, data)
     return ApiResponse(data=session, message="Thêm buổi học vào thời khóa biểu thành công")
+
+@router.post("/recurring", summary="N-05: Tạo thời khóa biểu lặp lại theo tuần cho toàn bộ thời gian lớp học")
+def create_recurring_schedule(
+    data: ScheduleRecurringCreate,
+    db: Session = Depends(get_db),
+    _ = Depends(require_roles([RoleEnum.ADMIN, RoleEnum.ACADEMIC_STAFF]))
+):
+    result = ScheduleService.generate_recurring_sessions(db, data)
+    return ApiResponse(
+        data=result,
+        message=f"Đã tạo thành công {result['created_count']} buổi học trong khoảng {result['start_date']} đến {result['end_date']}"
+    )
 
 @router.put("/{session_id}", response_model=ApiResponse[ScheduleSessionResponse], summary="FR-62: Cập nhật/Điều chỉnh thời khóa biểu")
 def update_schedule_session(
