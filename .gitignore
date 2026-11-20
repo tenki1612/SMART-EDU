@@ -54,9 +54,13 @@ Thumbs.db
 # SQLite temporary journal files
 *.db-journal
 *.bak
+*.bak*
+*.sql
 *_backup*.db
 *test_isolated.db
 backend/qa_data/*.db
+backend/qa_data/*.bak*
+backend/qa_data/*.sql
 prisma/*.db
 prisma/*.db-journal
 

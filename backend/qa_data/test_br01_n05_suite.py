@@ -190,9 +190,9 @@ db.commit()
 db.query(ScheduleSession).filter(ScheduleSession.class_id == test_class.id).delete()
 db.commit()
 
-# Teacher and classroom
+# Teacher and classroom (chọn phòng không bị chiếm dụng bởi lớp khác trong DB)
 teacher = test_class.teacher_id or 1
-classroom_id = 1
+classroom_id = 27
 
 recurring_req = ScheduleRecurringCreate(
     class_id=test_class.id,
