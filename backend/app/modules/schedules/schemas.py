@@ -21,6 +21,7 @@ class ScheduleRecurringCreate(BaseModel):
     slot_name: str = "Ca học"
     start_date: Optional[date] = None
     end_date: Optional[date] = None
+    is_confirmed: Optional[bool] = False
 
 class ScheduleSessionUpdate(BaseModel):
     classroom_id: Optional[int] = None

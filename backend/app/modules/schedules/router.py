@@ -86,6 +86,11 @@ def list_schedules(
         if not teacher:
             return ApiResponse(data=[], message="Chưa tìm thấy hồ sơ giảng viên")
         teacher_id = teacher.id
+    elif payload and payload.get("role") in [RoleEnum.STUDENT.value, RoleEnum.PARENT.value]:
+        user_id = int(payload.get("sub", 0)) if "sub" in payload else payload.get("user_id")
+        role = payload.get("role")
+        sessions = ScheduleService.get_personal_schedule(db, user_id=user_id, role=role)
+        return ApiResponse(data=sessions, message="Thời khóa biểu cá nhân")
 
     sessions = ScheduleService.list_sessions(db, class_id=class_id, teacher_id=teacher_id, from_date=from_date, to_date=to_date)
     return ApiResponse(data=sessions, message="Thời khóa biểu")
