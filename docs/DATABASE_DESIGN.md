@@ -37,7 +37,9 @@ Tài liệu này chuẩn hóa toàn bộ kiến trúc Cơ sở dữ liệu quan 
 
 ---
 
-## 3. SƠ ĐỒ THỰC THỂ LIÊN KẾT TOÀN DIỆN (MERMAID ERD)
+## 3. SƠ ĐỒ THỰC THỂ LIÊN KẾT TOÀN DIỆN (MERMAID ERD & PLANTUML)
+
+> Xem file lược đồ PlantUML hoàn chỉnh tại: [`docs/DATABASE_SCHEMA.puml`](./DATABASE_SCHEMA.puml)
 
 ```mermaid
 erDiagram

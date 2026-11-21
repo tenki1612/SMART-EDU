@@ -1,0 +1,307 @@
+@startuml SMART_EDU_Database_Schema
+' ==============================================================================
+' LƯỢC ĐỒ CƠ SỞ DỮ LIỆU - HỆ THỐNG SMART-EDU LMS
+' Nguồn: prisma/schema.prisma (PostgreSQL - 15 bảng nghiệp vụ + 1 bảng kỹ thuật)
+' Quy ước:
+'   <<PK>> = Primary Key   <<FK>> = Foreign Key   <<UK>> = Unique
+'   Kiểu có dấu "?" = cột nullable (cho phép NULL)
+' Cách render: https://www.plantuml.com/plantuml/  |  java -jar plantuml.jar file.puml
+' ==============================================================================
+
+title SMART-EDU LMS — Lược đồ CSDL (UML / PlantUML)
+
+skinparam linetype ortho
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam arrowColor #4B5563
+skinparam classBackgroundColor #FDFEFE
+skinparam classBorderColor #1F4E79
+skinparam classHeaderBackgroundColor #1F4E79
+
+enum roleenum <<enumeration>> {
+  ADMIN
+  ACADEMIC_STAFF
+  TEACHER
+  STUDENT
+  PARENT
+}
+
+package "1. Xác thực & Hồ sơ" {
+
+  class NGUOI_DUNG <<table>> {
+    +MaNguoiDung : INT <<PK>>
+    +TenDangNhap : VARCHAR(50) <<UK>>
+    +Email : VARCHAR(100)
+    +HoTen : VARCHAR(100)
+    +MatKhau : VARCHAR(255)
+    +VaiTro : roleenum
+    +SoDienThoai : VARCHAR(20)?
+    +AnhDaiDien : VARCHAR(500)?
+    +TrangThai : BOOLEAN?
+    +SoLanDangNhapSai : INT
+    +ThoiGianKhoa : TIMESTAMP(6)?
+    +MaXacThucOTP : VARCHAR(100)?
+    +HanXacThucOTP : TIMESTAMP(6)?
+    +NgayTao : TIMESTAMP(6)?
+    +NgayCapNhat : TIMESTAMP(6)?
+    +DaXoa : BOOLEAN?
+  }
+
+  class HOC_VIEN <<table>> {
+    +MaHocVien : INT <<PK>>
+    +MaNguoiDung : INT <<FK>>
+    +MaSoHocVien : VARCHAR(50) <<UK>>
+    +NgaySinh : DATE?
+    +DiaChi : VARCHAR(255)?
+    +TrangThai : VARCHAR(50)?
+    +NgayTao : TIMESTAMP(6)?
+    +NgayCapNhat : TIMESTAMP(6)?
+    +DaXoa : BOOLEAN?
+  }
+
+  class GIANG_VIEN <<table>> {
+    +MaGiangVien : INT <<PK>>
+    +MaNguoiDung : INT <<FK>>
+    +MaSoGiangVien : VARCHAR(50) <<UK>>
+    +ChuyenMon : VARCHAR(100)?
+    +HocVi : VARCHAR(100)?
+    +TrangThai : VARCHAR(50)?
+    +NgayTao : TIMESTAMP(6)?
+    +NgayCapNhat : TIMESTAMP(6)?
+    +DaXoa : BOOLEAN?
+  }
+
+  class PHU_HUYNH_HOC_VIEN <<table>> {
+    +MaPH_HV : INT <<PK>>
+    +MaNguoiDung_PH : INT <<FK>>
+    +MaHocVien : INT <<FK>>
+    +QuanHe : VARCHAR(50)?
+    +NgayTao : TIMESTAMP(6)?
+    +NgayCapNhat : TIMESTAMP(6)?
+    +DaXoa : BOOLEAN?
+  }
+}
+
+package "2. Khóa học & Lớp học" {
+
+  class KHOA_HOC <<table>> {
+    +MaKhoaHoc : INT <<PK>>
+    +MaSoKhoaHoc : VARCHAR(50) <<UK>>
+    +TenKhoaHoc : VARCHAR(150)
+    +MoTa : TEXT?
+    +TrinhDoMucTieu : VARCHAR(100)
+    +ThoiLuongTuan : INT?
+    +HocPhi : FLOAT?
+    +TrangThai : BOOLEAN?
+    +NgayTao : TIMESTAMP(6)?
+    +NgayCapNhat : TIMESTAMP(6)?
+    +DaXoa : BOOLEAN?
+  }
+
+  class LOP_HOC <<table>> {
+    +MaLopHoc : INT <<PK>>
+    +MaSoLop : VARCHAR(50) <<UK>>
+    +MaKhoaHoc : INT <<FK>>
+    +MaGiangVien : INT? <<FK>>
+    +SiSoToiDa : INT?
+    +SiSoHienTai : INT?
+    +NgayMoLop : DATE?
+    +NgayBatDau : DATE?
+    +NgayKetThuc : DATE?
+    +TrangThai : VARCHAR(50)?
+    +MoKhoaDiemThuCong : BOOLEAN?
+    +NgayTao : TIMESTAMP(6)?
+    +NgayCapNhat : TIMESTAMP(6)?
+    +DaXoa : BOOLEAN?
+  }
+
+  class HOC_VIEN_LOP_HOC <<table>> {
+    +MaHV_LH : INT <<PK>>
+    +MaLopHoc : INT <<FK>>
+    +MaHocVien : INT <<FK>>
+    +NgayVaoLop : TIMESTAMP(6)?
+    +TrangThaiHoc : VARCHAR(50)?
+    +NgayTao : TIMESTAMP(6)?
+    +NgayCapNhat : TIMESTAMP(6)?
+    +DaXoa : BOOLEAN?
+  }
+
+  class YEU_CAU_DANG_KY <<table>> {
+    +MaYeuCau : INT <<PK>>
+    +MaHocVien : INT <<FK>>
+    +MaLopHoc : INT <<FK>>
+    +NgayYeuCau : TIMESTAMP(6)?
+    +TrangThai : VARCHAR(50)?
+    +GhiChu : TEXT?
+    +LyDoTuChoi : TEXT?
+    +MaNguoiDuyet : INT? <<FK>>
+    +NgayDuyet : TIMESTAMP(6)?
+    +NgayTao : TIMESTAMP(6)?
+    +NgayCapNhat : TIMESTAMP(6)?
+    +DaXoa : BOOLEAN?
+  }
+
+  class PHONG_HOC <<table>> {
+    +MaPhongHoc : INT <<PK>>
+    +MaSoPhong : VARCHAR(50) <<UK>>
+    +ToaNha : VARCHAR(50)?
+    +SucChua : INT?
+    +TrangThai : VARCHAR(50)?
+    +NgayTao : TIMESTAMP(6)?
+    +NgayCapNhat : TIMESTAMP(6)?
+    +DaXoa : BOOLEAN?
+  }
+
+  class BUOI_HOC <<table>> {
+    +MaBuoiHoc : INT <<PK>>
+    +MaLopHoc : INT <<FK>>
+    +MaPhongHoc : INT <<FK>>
+    +MaGiangVien : INT <<FK>>
+    +NgayHoc : DATE
+    +GioBatDau : VARCHAR(10)
+    +GioKetThuc : VARCHAR(10)
+    +CaHoc : VARCHAR(100)?
+    +DaXacNhan : BOOLEAN?
+    +TrangThai : VARCHAR(50)?
+    +NgayTao : TIMESTAMP(6)?
+    +NgayCapNhat : TIMESTAMP(6)?
+    +DaXoa : BOOLEAN?
+  }
+}
+
+package "3. Điểm số & Lộ trình" {
+
+  class BANG_DIEM <<table>> {
+    +MaBangDiem : INT <<PK>>
+    +MaLopHoc : INT <<FK>>
+    +MaHocVien : INT <<FK>>
+    +DiemChuyenCan : FLOAT?
+    +DiemGiuaKy : FLOAT?
+    +DiemCuoiKy : FLOAT?
+    +DiemTongKet : FLOAT?
+    +KetQua : VARCHAR(50)?
+    +DaKhoaSo : BOOLEAN?
+    +GhiChu : TEXT?
+    +NgayTao : TIMESTAMP(6)?
+    +NgayCapNhat : TIMESTAMP(6)?
+    +DaXoa : BOOLEAN?
+  }
+
+  class LICHSU_KHOA_DIEM <<table>> {
+    +MaLichSu : INT <<PK>>
+    +MaLopHoc : INT <<FK>>
+    +HanhDong : VARCHAR(50)
+    +MaNguoiThucHien : INT? <<FK>>
+    +ThoiGian : TIMESTAMP(6)?
+    +LyDo : TEXT?
+    +NgayTao : TIMESTAMP(6)?
+    +NgayCapNhat : TIMESTAMP(6)?
+    +DaXoa : BOOLEAN?
+  }
+
+  class TIEN_TRINH_KHOA_HOC <<table>> {
+    +MaTienTrinh : INT <<PK>>
+    +MaHocVien : INT <<FK>>
+    +MaKhoaHocHienTai : INT <<FK>>
+    +MaKhoaHocTiepTheo : INT <<FK>>
+    +DuDieuKien : BOOLEAN?
+    +DaXacNhan : BOOLEAN?
+    +MaNguoiXacNhan : INT? <<FK>>
+    +NgayXacNhan : TIMESTAMP(6)?
+    +GhiChu : TEXT?
+    +NgayTao : TIMESTAMP(6)?
+    +NgayCapNhat : TIMESTAMP(6)?
+    +DaXoa : BOOLEAN?
+  }
+}
+
+package "4. Đơn thư & Phản hồi" {
+
+  class DON_THU <<table>> {
+    +MaDon : INT <<PK>>
+    +MaSoDon : VARCHAR(50) <<UK>>
+    +LoaiDon : VARCHAR(50)
+    +MaNguoiGui : INT <<FK>>
+    +MaNguoiNhan : INT? <<FK>>
+    +VaiTroNguoiNhan : VARCHAR(50)?
+    +LinhVuc : VARCHAR(50)
+    +MaLopHoc : INT? <<FK>>
+    +TieuDe : VARCHAR(255)
+    +NoiDung : TEXT
+    +TrangThai : VARCHAR(50)?
+    +HanChotKhieuNai : TIMESTAMP(6)?
+    +NgayTao : TIMESTAMP(6)?
+    +NgayCapNhat : TIMESTAMP(6)?
+    +DaXoa : BOOLEAN?
+  }
+
+  class DON_THU_PHAN_HOI <<table>> {
+    +MaPhanHoi : INT <<PK>>
+    +MaDon : INT <<FK>>
+    +MaNguoiGui : INT <<FK>>
+    +NoiDung : TEXT
+    +NgayTao : TIMESTAMP(6)?
+    +NgayCapNhat : TIMESTAMP(6)?
+    +DaXoa : BOOLEAN?
+  }
+}
+
+class alembic_version <<table, technical>> {
+  +version_num : VARCHAR(32) <<PK>>
+}
+
+NGUOI_DUNG "1" -- "0..1" HOC_VIEN : "MaNguoiDung (1-1)"
+NGUOI_DUNG "1" -- "0..1" GIANG_VIEN : "MaNguoiDung (1-1)"
+NGUOI_DUNG "1" -- "0..*" PHU_HUYNH_HOC_VIEN : "MaNguoiDung_PH"
+HOC_VIEN   "1" -- "0..*" PHU_HUYNH_HOC_VIEN : "MaHocVien"
+
+KHOA_HOC   "1" -- "0..*" LOP_HOC : "MaKhoaHoc"
+GIANG_VIEN "1" -- "0..*" LOP_HOC : "MaGiangVien (chủ nhiệm)"
+
+LOP_HOC  "1" -- "0..*" HOC_VIEN_LOP_HOC : "MaLopHoc"
+HOC_VIEN "1" -- "0..*" HOC_VIEN_LOP_HOC : "MaHocVien"
+
+HOC_VIEN   "1" -- "0..*" YEU_CAU_DANG_KY : "MaHocVien"
+LOP_HOC    "1" -- "0..*" YEU_CAU_DANG_KY : "MaLopHoc"
+NGUOI_DUNG "0..1" -- "0..*" YEU_CAU_DANG_KY : "MaNguoiDuyet"
+
+LOP_HOC    "1" -- "0..*" BUOI_HOC : "MaLopHoc"
+PHONG_HOC  "1" -- "0..*" BUOI_HOC : "MaPhongHoc"
+GIANG_VIEN "1" -- "0..*" BUOI_HOC : "MaGiangVien"
+
+LOP_HOC  "1" -- "0..*" BANG_DIEM : "MaLopHoc"
+HOC_VIEN "1" -- "0..*" BANG_DIEM : "MaHocVien"
+
+LOP_HOC    "1" -- "0..*" LICHSU_KHOA_DIEM : "MaLopHoc"
+NGUOI_DUNG "0..1" -- "0..*" LICHSU_KHOA_DIEM : "MaNguoiThucHien"
+
+HOC_VIEN   "1" -- "0..*" TIEN_TRINH_KHOA_HOC : "MaHocVien"
+KHOA_HOC   "1" -- "0..*" TIEN_TRINH_KHOA_HOC : "MaKhoaHocHienTai"
+KHOA_HOC   "1" -- "0..*" TIEN_TRINH_KHOA_HOC : "MaKhoaHocTiepTheo"
+NGUOI_DUNG "0..1" -- "0..*" TIEN_TRINH_KHOA_HOC : "MaNguoiXacNhan"
+
+NGUOI_DUNG "1" -- "0..*" DON_THU : "MaNguoiGui"
+NGUOI_DUNG "0..1" -- "0..*" DON_THU : "MaNguoiNhan"
+LOP_HOC    "0..1" -- "0..*" DON_THU : "MaLopHoc"
+
+DON_THU    "1" -- "0..*" DON_THU_PHAN_HOI : "MaDon"
+NGUOI_DUNG "1" -- "0..*" DON_THU_PHAN_HOI : "MaNguoiGui"
+
+NGUOI_DUNG ..> roleenum : VaiTro
+
+note right of HOC_VIEN_LOP_HOC
+  Bảng trung gian giải quyết quan hệ
+  nhiều-nhiều giữa HOC_VIEN và LOP_HOC.
+end note
+
+note bottom of alembic_version
+  Bảng metadata của Alembic
+  (theo dõi phiên bản migration).
+end note
+
+note bottom of NGUOI_DUNG
+  (Email, VaiTro) là UK phối hợp.
+end note
+
+@enduml
