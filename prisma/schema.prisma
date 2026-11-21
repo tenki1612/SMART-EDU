@@ -120,24 +120,28 @@ model KHOA_HOC {
 }
 
 model LOP_HOC {
-  MaLopHoc         Int                @id @default(autoincrement())
-  MaSoLop          String             @unique(map: "ix_LOP_HOC_MaSoLop") @db.VarChar(50)
-  MaKhoaHoc        Int
-  MaGiangVien      Int?
-  SiSoToiDa        Int?
-  SiSoHienTai      Int?
-  NgayBatDau       DateTime?          @db.Date
-  NgayKetThuc      DateTime?          @db.Date
-  TrangThai        String?            @db.VarChar(50)
-  NgayTao          DateTime?          @db.Timestamp(6)
-  NgayCapNhat      DateTime?          @db.Timestamp(6)
-  DaXoa            Boolean?
-  BANG_DIEM        BANG_DIEM[]
-  BUOI_HOC         BUOI_HOC[]
-  HOC_VIEN_LOP_HOC HOC_VIEN_LOP_HOC[]
-  GIANG_VIEN       GIANG_VIEN?        @relation(fields: [MaGiangVien], references: [MaGiangVien], onDelete: NoAction, onUpdate: NoAction)
-  KHOA_HOC         KHOA_HOC           @relation(fields: [MaKhoaHoc], references: [MaKhoaHoc], onDelete: NoAction, onUpdate: NoAction)
-  YEU_CAU_DANG_KY  YEU_CAU_DANG_KY[]
+  MaLopHoc          Int                @id @default(autoincrement())
+  MaSoLop           String             @unique(map: "ix_LOP_HOC_MaSoLop") @db.VarChar(50)
+  MaKhoaHoc         Int
+  MaGiangVien       Int?
+  SiSoToiDa         Int?
+  SiSoHienTai       Int?
+  NgayMoLop         DateTime?          @db.Date
+  NgayBatDau        DateTime?          @db.Date
+  NgayKetThuc       DateTime?          @db.Date
+  TrangThai         String?            @db.VarChar(50)
+  MoKhoaDiemThuCong Boolean?           @default(false)
+  NgayTao           DateTime?          @db.Timestamp(6)
+  NgayCapNhat       DateTime?          @db.Timestamp(6)
+  DaXoa             Boolean?
+  BANG_DIEM         BANG_DIEM[]
+  BUOI_HOC          BUOI_HOC[]
+  HOC_VIEN_LOP_HOC  HOC_VIEN_LOP_HOC[]
+  GIANG_VIEN        GIANG_VIEN?        @relation(fields: [MaGiangVien], references: [MaGiangVien], onDelete: NoAction, onUpdate: NoAction)
+  KHOA_HOC          KHOA_HOC           @relation(fields: [MaKhoaHoc], references: [MaKhoaHoc], onDelete: NoAction, onUpdate: NoAction)
+  YEU_CAU_DANG_KY   YEU_CAU_DANG_KY[]
+  LICHSU_KHOA_DIEM  LICHSU_KHOA_DIEM[]
+  DON_THU           DON_THU[]
 
   @@index([MaLopHoc], map: "ix_LOP_HOC_MaLopHoc")
 }
@@ -164,6 +168,10 @@ model NGUOI_DUNG {
   PHU_HUYNH_HOC_VIEN  PHU_HUYNH_HOC_VIEN[]
   TIEN_TRINH_KHOA_HOC TIEN_TRINH_KHOA_HOC[]
   YEU_CAU_DANG_KY     YEU_CAU_DANG_KY[]
+  LICHSU_KHOA_DIEM    LICHSU_KHOA_DIEM[]
+  DON_THU_GUI         DON_THU[]             @relation("DON_THU_MaNguoiGuiToNGUOI_DUNG")
+  DON_THU_NHAN        DON_THU[]             @relation("DON_THU_MaNguoiNhanToNGUOI_DUNG")
+  DON_THU_PHAN_HOI    DON_THU_PHAN_HOI[]
 
   @@unique([Email, VaiTro], map: "ix_NGUOI_DUNG_Email_VaiTro")
   @@index([Email], map: "ix_NGUOI_DUNG_Email")
@@ -237,6 +245,66 @@ model YEU_CAU_DANG_KY {
   NGUOI_DUNG   NGUOI_DUNG? @relation(fields: [MaNguoiDuyet], references: [MaNguoiDung], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([MaYeuCau], map: "ix_YEU_CAU_DANG_KY_MaYeuCau")
+}
+
+model LICHSU_KHOA_DIEM {
+  MaLichSu        Int         @id @default(autoincrement())
+  MaLopHoc        Int
+  HanhDong        String      @db.VarChar(50)
+  MaNguoiThucHien Int?
+  ThoiGian        DateTime?   @db.Timestamp(6)
+  LyDo            String?
+  NgayTao         DateTime?   @db.Timestamp(6)
+  NgayCapNhat     DateTime?   @db.Timestamp(6)
+  DaXoa           Boolean?
+  LOP_HOC         LOP_HOC     @relation(fields: [MaLopHoc], references: [MaLopHoc], onDelete: NoAction, onUpdate: NoAction)
+  NGUOI_DUNG      NGUOI_DUNG? @relation(fields: [MaNguoiThucHien], references: [MaNguoiDung], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([MaLichSu], map: "ix_LICHSU_KHOA_DIEM_MaLichSu")
+  @@index([MaLopHoc], map: "ix_LICHSU_KHOA_DIEM_MaLopHoc")
+  @@index([MaNguoiThucHien], map: "ix_LICHSU_KHOA_DIEM_MaNguoiThucHien")
+}
+
+model DON_THU {
+  MaDon             Int                 @id @default(autoincrement())
+  MaSoDon           String              @unique(map: "ix_DON_THU_MaSoDon") @db.VarChar(50)
+  LoaiDon           String              @db.VarChar(50)
+  MaNguoiGui        Int
+  MaNguoiNhan       Int?
+  VaiTroNguoiNhan   String?             @db.VarChar(50)
+  LinhVuc           String              @default("OTHER") @db.VarChar(50)
+  MaLopHoc          Int?
+  TieuDe            String              @db.VarChar(255)
+  NoiDung           String
+  TrangThai         String?             @default("PENDING") @db.VarChar(50)
+  HanChotKhieuNai   DateTime?           @db.Timestamp(6)
+  NgayTao           DateTime?           @db.Timestamp(6)
+  NgayCapNhat       DateTime?           @db.Timestamp(6)
+  DaXoa             Boolean?
+  NGUOI_DUNG_GUI    NGUOI_DUNG          @relation("DON_THU_MaNguoiGuiToNGUOI_DUNG", fields: [MaNguoiGui], references: [MaNguoiDung], onDelete: NoAction, onUpdate: NoAction)
+  NGUOI_DUNG_NHAN   NGUOI_DUNG?         @relation("DON_THU_MaNguoiNhanToNGUOI_DUNG", fields: [MaNguoiNhan], references: [MaNguoiDung], onDelete: NoAction, onUpdate: NoAction)
+  LOP_HOC           LOP_HOC?            @relation(fields: [MaLopHoc], references: [MaLopHoc], onDelete: NoAction, onUpdate: NoAction)
+  DON_THU_PHAN_HOI  DON_THU_PHAN_HOI[]
+
+  @@index([MaDon], map: "ix_DON_THU_MaDon")
+  @@index([MaNguoiGui], map: "ix_DON_THU_MaNguoiGui")
+  @@index([MaNguoiNhan], map: "ix_DON_THU_MaNguoiNhan")
+  @@index([MaLopHoc], map: "ix_DON_THU_MaLopHoc")
+}
+
+model DON_THU_PHAN_HOI {
+  MaPhanHoi   Int        @id @default(autoincrement())
+  MaDon       Int
+  MaNguoiGui  Int
+  NoiDung     String
+  NgayTao     DateTime?  @db.Timestamp(6)
+  NgayCapNhat DateTime?  @db.Timestamp(6)
+  DaXoa       Boolean?
+  DON_THU     DON_THU    @relation(fields: [MaDon], references: [MaDon], onDelete: Cascade, onUpdate: NoAction)
+  NGUOI_DUNG  NGUOI_DUNG @relation(fields: [MaNguoiGui], references: [MaNguoiDung], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([MaPhanHoi], map: "ix_DON_THU_PHAN_HOI_MaPhanHoi")
+  @@index([MaDon], map: "ix_DON_THU_PHAN_HOI_MaDon")
 }
 
 enum roleenum {

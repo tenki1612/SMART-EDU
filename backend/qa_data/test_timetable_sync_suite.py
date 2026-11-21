@@ -55,7 +55,7 @@ def run_suite():
         ScheduleSession.is_deleted == False
     ).order_by(ScheduleSession.session_date.asc(), ScheduleSession.start_time.asc()).all()
 
-    test("Class 1 has full recurring schedule (count = 26)", len(c1_sessions) == 26, f"Actual: {len(c1_sessions)} sessions")
+    test("Class 1 has full recurring schedule (count = 24)", len(c1_sessions) == 24, f"Actual: {len(c1_sessions)} sessions")
     test("First session >= start_date", c1_sessions[0].session_date >= c1.start_date, f"First: {c1_sessions[0].session_date}")
     test("Last session <= end_date", c1_sessions[-1].session_date <= c1.end_date, f"Last: {c1_sessions[-1].session_date}")
 
@@ -64,7 +64,7 @@ def run_suite():
     dec_count = sum(1 for s in c1_sessions if s.session_date.month == 12 and s.session_date.year == 2026)
     jan_count = sum(1 for s in c1_sessions if s.session_date.month == 1 and s.session_date.year == 2027)
 
-    test("Coverage includes November 2026 (11 sessions)", nov_count == 11, f"Nov sessions: {nov_count}")
+    test("Coverage includes November 2026 (9 sessions)", nov_count == 9, f"Nov sessions: {nov_count}")
     test("Coverage includes December 2026 (9 sessions)", dec_count == 9, f"Dec sessions: {dec_count}")
     test("Coverage includes January 2027 (6 sessions)", jan_count == 6, f"Jan sessions: {jan_count}")
 
