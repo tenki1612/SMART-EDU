@@ -25,6 +25,8 @@ model BANG_DIEM {
   LOP_HOC       LOP_HOC   @relation(fields: [MaLopHoc], references: [MaLopHoc], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([MaBangDiem], map: "ix_BANG_DIEM_MaBangDiem")
+  @@index([MaHocVien], map: "ix_BANG_DIEM_MaHocVien")
+  @@index([MaLopHoc], map: "ix_BANG_DIEM_MaLopHoc")
 }
 
 model BUOI_HOC {
@@ -46,6 +48,9 @@ model BUOI_HOC {
   PHONG_HOC   PHONG_HOC  @relation(fields: [MaPhongHoc], references: [MaPhongHoc], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([MaBuoiHoc], map: "ix_BUOI_HOC_MaBuoiHoc")
+  @@index([MaGiangVien], map: "ix_BUOI_HOC_MaGiangVien")
+  @@index([MaLopHoc], map: "ix_BUOI_HOC_MaLopHoc")
+  @@index([MaPhongHoc], map: "ix_BUOI_HOC_MaPhongHoc")
 }
 
 model GIANG_VIEN {
@@ -98,6 +103,8 @@ model HOC_VIEN_LOP_HOC {
   LOP_HOC      LOP_HOC   @relation(fields: [MaLopHoc], references: [MaLopHoc], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([MaHV_LH], map: "ix_HOC_VIEN_LOP_HOC_MaHV_LH")
+  @@index([MaHocVien], map: "ix_HOC_VIEN_LOP_HOC_MaHocVien")
+  @@index([MaLopHoc], map: "ix_HOC_VIEN_LOP_HOC_MaLopHoc")
 }
 
 model KHOA_HOC {
@@ -130,20 +137,22 @@ model LOP_HOC {
   NgayBatDau        DateTime?          @db.Date
   NgayKetThuc       DateTime?          @db.Date
   TrangThai         String?            @db.VarChar(50)
-  MoKhoaDiemThuCong Boolean?           @default(false)
+  MoKhoaDiemThuCong Boolean?
   NgayTao           DateTime?          @db.Timestamp(6)
   NgayCapNhat       DateTime?          @db.Timestamp(6)
   DaXoa             Boolean?
   BANG_DIEM         BANG_DIEM[]
   BUOI_HOC          BUOI_HOC[]
+  DON_THU           DON_THU[]
   HOC_VIEN_LOP_HOC  HOC_VIEN_LOP_HOC[]
+  LICHSU_KHOA_DIEM  LICHSU_KHOA_DIEM[]
   GIANG_VIEN        GIANG_VIEN?        @relation(fields: [MaGiangVien], references: [MaGiangVien], onDelete: NoAction, onUpdate: NoAction)
   KHOA_HOC          KHOA_HOC           @relation(fields: [MaKhoaHoc], references: [MaKhoaHoc], onDelete: NoAction, onUpdate: NoAction)
   YEU_CAU_DANG_KY   YEU_CAU_DANG_KY[]
-  LICHSU_KHOA_DIEM  LICHSU_KHOA_DIEM[]
-  DON_THU           DON_THU[]
 
   @@index([MaLopHoc], map: "ix_LOP_HOC_MaLopHoc")
+  @@index([MaGiangVien], map: "ix_LOP_HOC_MaGiangVien")
+  @@index([MaKhoaHoc], map: "ix_LOP_HOC_MaKhoaHoc")
 }
 
 model NGUOI_DUNG {
@@ -163,17 +172,17 @@ model NGUOI_DUNG {
   NgayTao             DateTime?             @db.Timestamp(6)
   NgayCapNhat         DateTime?             @db.Timestamp(6)
   DaXoa               Boolean?
-  GIANG_VIEN          GIANG_VIEN?
-  HOC_VIEN            HOC_VIEN?
-  PHU_HUYNH_HOC_VIEN  PHU_HUYNH_HOC_VIEN[]
-  TIEN_TRINH_KHOA_HOC TIEN_TRINH_KHOA_HOC[]
-  YEU_CAU_DANG_KY     YEU_CAU_DANG_KY[]
-  LICHSU_KHOA_DIEM    LICHSU_KHOA_DIEM[]
   DON_THU_GUI         DON_THU[]             @relation("DON_THU_MaNguoiGuiToNGUOI_DUNG")
   DON_THU_NHAN        DON_THU[]             @relation("DON_THU_MaNguoiNhanToNGUOI_DUNG")
   DON_THU_PHAN_HOI    DON_THU_PHAN_HOI[]
+  GIANG_VIEN          GIANG_VIEN?
+  HOC_VIEN            HOC_VIEN?
+  LICHSU_KHOA_DIEM    LICHSU_KHOA_DIEM[]
+  PHU_HUYNH_HOC_VIEN  PHU_HUYNH_HOC_VIEN[]
+  TIEN_TRINH_KHOA_HOC TIEN_TRINH_KHOA_HOC[]
+  YEU_CAU_DANG_KY     YEU_CAU_DANG_KY[]
 
-  @@unique([Email, VaiTro], map: "ix_NGUOI_DUNG_Email_VaiTro")
+  @@unique([Email, VaiTro], map: "uq_nguoidung_email_vaitro")
   @@index([Email], map: "ix_NGUOI_DUNG_Email")
   @@index([MaNguoiDung], map: "ix_NGUOI_DUNG_MaNguoiDung")
 }
@@ -204,6 +213,8 @@ model PHU_HUYNH_HOC_VIEN {
   NGUOI_DUNG     NGUOI_DUNG @relation(fields: [MaNguoiDung_PH], references: [MaNguoiDung], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([MaPH_HV], map: "ix_PHU_HUYNH_HOC_VIEN_MaPH_HV")
+  @@index([MaHocVien], map: "ix_PHU_HUYNH_HOC_VIEN_MaHocVien")
+  @@index([MaNguoiDung_PH], map: "ix_PHU_HUYNH_HOC_VIEN_MaNguoiDung_PH")
 }
 
 model TIEN_TRINH_KHOA_HOC {
@@ -225,6 +236,9 @@ model TIEN_TRINH_KHOA_HOC {
   NGUOI_DUNG                                               NGUOI_DUNG? @relation(fields: [MaNguoiXacNhan], references: [MaNguoiDung], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([MaTienTrinh], map: "ix_TIEN_TRINH_KHOA_HOC_MaTienTrinh")
+  @@index([MaHocVien], map: "ix_TIEN_TRINH_KHOA_HOC_MaHocVien")
+  @@index([MaKhoaHocHienTai], map: "ix_TIEN_TRINH_KHOA_HOC_MaKhoaHocHienTai")
+  @@index([MaKhoaHocTiepTheo], map: "ix_TIEN_TRINH_KHOA_HOC_MaKhoaHocTiepTheo")
 }
 
 model YEU_CAU_DANG_KY {
@@ -245,6 +259,8 @@ model YEU_CAU_DANG_KY {
   NGUOI_DUNG   NGUOI_DUNG? @relation(fields: [MaNguoiDuyet], references: [MaNguoiDung], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([MaYeuCau], map: "ix_YEU_CAU_DANG_KY_MaYeuCau")
+  @@index([MaHocVien], map: "ix_YEU_CAU_DANG_KY_MaHocVien")
+  @@index([MaLopHoc], map: "ix_YEU_CAU_DANG_KY_MaLopHoc")
 }
 
 model LICHSU_KHOA_DIEM {
@@ -266,25 +282,25 @@ model LICHSU_KHOA_DIEM {
 }
 
 model DON_THU {
-  MaDon             Int                 @id @default(autoincrement())
-  MaSoDon           String              @unique(map: "ix_DON_THU_MaSoDon") @db.VarChar(50)
-  LoaiDon           String              @db.VarChar(50)
-  MaNguoiGui        Int
-  MaNguoiNhan       Int?
-  VaiTroNguoiNhan   String?             @db.VarChar(50)
-  LinhVuc           String              @default("OTHER") @db.VarChar(50)
-  MaLopHoc          Int?
-  TieuDe            String              @db.VarChar(255)
-  NoiDung           String
-  TrangThai         String?             @default("PENDING") @db.VarChar(50)
-  HanChotKhieuNai   DateTime?           @db.Timestamp(6)
-  NgayTao           DateTime?           @db.Timestamp(6)
-  NgayCapNhat       DateTime?           @db.Timestamp(6)
-  DaXoa             Boolean?
-  NGUOI_DUNG_GUI    NGUOI_DUNG          @relation("DON_THU_MaNguoiGuiToNGUOI_DUNG", fields: [MaNguoiGui], references: [MaNguoiDung], onDelete: NoAction, onUpdate: NoAction)
-  NGUOI_DUNG_NHAN   NGUOI_DUNG?         @relation("DON_THU_MaNguoiNhanToNGUOI_DUNG", fields: [MaNguoiNhan], references: [MaNguoiDung], onDelete: NoAction, onUpdate: NoAction)
-  LOP_HOC           LOP_HOC?            @relation(fields: [MaLopHoc], references: [MaLopHoc], onDelete: NoAction, onUpdate: NoAction)
-  DON_THU_PHAN_HOI  DON_THU_PHAN_HOI[]
+  MaDon            Int                @id @default(autoincrement())
+  MaSoDon          String             @unique(map: "ix_DON_THU_MaSoDon") @db.VarChar(50)
+  LoaiDon          String             @db.VarChar(50)
+  MaNguoiGui       Int
+  MaNguoiNhan      Int?
+  VaiTroNguoiNhan  String?            @db.VarChar(50)
+  LinhVuc          String             @db.VarChar(50)
+  MaLopHoc         Int?
+  TieuDe           String             @db.VarChar(255)
+  NoiDung          String
+  TrangThai        String?            @db.VarChar(50)
+  HanChotKhieuNai  DateTime?          @db.Timestamp(6)
+  NgayTao          DateTime?          @db.Timestamp(6)
+  NgayCapNhat      DateTime?          @db.Timestamp(6)
+  DaXoa            Boolean?
+  LOP_HOC          LOP_HOC?           @relation(fields: [MaLopHoc], references: [MaLopHoc], onDelete: NoAction, onUpdate: NoAction)
+  NGUOI_DUNG_GUI   NGUOI_DUNG         @relation("DON_THU_MaNguoiGuiToNGUOI_DUNG", fields: [MaNguoiGui], references: [MaNguoiDung], onDelete: NoAction, onUpdate: NoAction)
+  NGUOI_DUNG_NHAN  NGUOI_DUNG?        @relation("DON_THU_MaNguoiNhanToNGUOI_DUNG", fields: [MaNguoiNhan], references: [MaNguoiDung], onDelete: NoAction, onUpdate: NoAction)
+  DON_THU_PHAN_HOI DON_THU_PHAN_HOI[]
 
   @@index([MaDon], map: "ix_DON_THU_MaDon")
   @@index([MaNguoiGui], map: "ix_DON_THU_MaNguoiGui")
@@ -300,11 +316,15 @@ model DON_THU_PHAN_HOI {
   NgayTao     DateTime?  @db.Timestamp(6)
   NgayCapNhat DateTime?  @db.Timestamp(6)
   DaXoa       Boolean?
-  DON_THU     DON_THU    @relation(fields: [MaDon], references: [MaDon], onDelete: Cascade, onUpdate: NoAction)
+  DON_THU     DON_THU    @relation(fields: [MaDon], references: [MaDon], onDelete: NoAction, onUpdate: NoAction)
   NGUOI_DUNG  NGUOI_DUNG @relation(fields: [MaNguoiGui], references: [MaNguoiDung], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([MaPhanHoi], map: "ix_DON_THU_PHAN_HOI_MaPhanHoi")
   @@index([MaDon], map: "ix_DON_THU_PHAN_HOI_MaDon")
+}
+
+model alembic_version {
+  version_num String @id(map: "alembic_version_pkc") @db.VarChar(32)
 }
 
 enum roleenum {
